@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG CMakeFiles/test.dir/test.cpp.o -o test  /home/jrj/code/vcpkg/installed/x64-linux/lib/libseal-4.1.a -lpthread /home/jrj/code/vcpkg/installed/x64-linux/lib/libz.a /home/jrj/code/vcpkg/installed/x64-linux/lib/libzstd.a -pthread

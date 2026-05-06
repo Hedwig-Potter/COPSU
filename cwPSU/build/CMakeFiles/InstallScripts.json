@@ -1,0 +1,15 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/jrj/code/cwPSU/build/cmake_install.cmake",
+		"/home/jrj/code/cwPSU/build/libOTe/cmake_install.cmake",
+		"/home/jrj/code/cwPSU/build/libOTe/cryptoTools/cmake_install.cmake",
+		"/home/jrj/code/cwPSU/build/libOTe/cryptoTools/cryptoTools/cmake_install.cmake",
+		"/home/jrj/code/cwPSU/build/libOTe/cryptoTools/tests_cryptoTools/cmake_install.cmake",
+		"/home/jrj/code/cwPSU/build/libOTe/cryptoTools/frontend_cryptoTools/cmake_install.cmake",
+		"/home/jrj/code/cwPSU/build/libOTe/libOTe/cmake_install.cmake",
+		"/home/jrj/code/cwPSU/build/libOTe/libOTe_Tests/cmake_install.cmake",
+		"/home/jrj/code/cwPSU/build/libOTe/frontend/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

@@ -1,0 +1,30 @@
+{
+  "configurations": [
+    {
+      "name": "Linux",
+      "includePath": [
+        "${workspaceFolder}/src",
+        "${workspaceFolder}/src/**",
+        "${workspaceFolder}/**",
+        "/home/jrj/code/vcpkg/installed/x64-linux/include/SEAL-4.1",
+        "/usr/include",
+        "/usr/local/include"
+      ],
+      "defines": [],
+      "compilerPath": "/usr/bin/g++",
+      "cStandard": "c11",
+      "cppStandard": "c++20",
+      "intelliSenseMode": "linux-gcc-x64",
+      "browse": {
+        "path": [
+          "${workspaceFolder}/src",
+          "${workspaceFolder}/src/**",
+          "${workspaceFolder}/**",
+          "/home/jrj/code/vcpkg/installed/x64-linux/include/SEAL-4.1"
+        ],
+        "limitSymbolsToIncludedHeaders": false
+      }
+    }
+  ],
+  "version": 4
+}

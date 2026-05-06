@@ -1,0 +1,17 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/jrj/code/UPSICA/build/cmake_install.cmake",
+		"/home/jrj/code/UPSICA/build/apsi-build/cmake_install.cmake",
+		"/home/jrj/code/UPSICA/build/apsi-build/common/apsi/cmake_install.cmake",
+		"/home/jrj/code/UPSICA/build/apsi-build/common/apsi/fourq/cmake_install.cmake",
+		"/home/jrj/code/UPSICA/build/apsi-build/common/apsi/fourq/amd64/cmake_install.cmake",
+		"/home/jrj/code/UPSICA/build/apsi-build/common/apsi/network/cmake_install.cmake",
+		"/home/jrj/code/UPSICA/build/apsi-build/common/apsi/oprf/cmake_install.cmake",
+		"/home/jrj/code/UPSICA/build/apsi-build/common/apsi/util/cmake_install.cmake",
+		"/home/jrj/code/UPSICA/build/apsi-build/receiver/apsi/cmake_install.cmake",
+		"/home/jrj/code/UPSICA/build/apsi-build/sender/apsi/cmake_install.cmake",
+		"/home/jrj/code/UPSICA/build/apsi-build/sender/apsi/util/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

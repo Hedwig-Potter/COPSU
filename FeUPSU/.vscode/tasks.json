@@ -1,0 +1,33 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Configure (cmake)",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/configure.sh",
+      "problemMatcher": []
+    },
+    {
+      "label": "Build",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/build.sh",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "Run",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/run.sh",
+      "args": [],
+      "problemMatcher": []
+    },
+    {
+      "label": "Build and Run",
+      "dependsOn": ["Configure (cmake)", "Build", "Run"],
+      "dependsOrder": "sequence",
+      "type": "shell",
+      "command": "echo done",
+      "problemMatcher": []
+    }
+  ]
+}

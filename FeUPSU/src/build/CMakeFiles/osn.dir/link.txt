@@ -1,0 +1,2 @@
+/usr/bin/ar qc libosn.a CMakeFiles/osn.dir/home/jrj/code/FeUPSU/osn/benes.cpp.o CMakeFiles/osn.dir/home/jrj/code/FeUPSU/osn/OSNSender.cpp.o CMakeFiles/osn.dir/home/jrj/code/FeUPSU/osn/OSNReceiver.cpp.o
+/usr/bin/ranlib libosn.a

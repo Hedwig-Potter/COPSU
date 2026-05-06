@@ -1,0 +1,15 @@
+cwPSU entry
+--- cwPSU Specs ---
+Client set size: 1024
+Server set size: 1048576
+<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+-------------------------- PSU Parameters --------------------------
+	Hamming Weight: 7
+	Effective Bitlength: 19
+	Code Length: 26
+-------------------------- Crypto Parameters --------------------------
+	Poly Mod Degree: 8192
+	Plain Modulus: 1032193 (20 bits)
+	Ciphertext Modulus Bitcount: 204
+terminate called after throwing an instance of 'std::invalid_argument'
+  what():  plain is not valid for encryption parameters

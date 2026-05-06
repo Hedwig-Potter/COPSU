@@ -1,0 +1,15 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/jrj/code/FeUPSU/build/cmake_install.cmake",
+		"/home/jrj/code/FeUPSU/build/libOTe/cmake_install.cmake",
+		"/home/jrj/code/FeUPSU/build/libOTe/cryptoTools/cmake_install.cmake",
+		"/home/jrj/code/FeUPSU/build/libOTe/cryptoTools/cryptoTools/cmake_install.cmake",
+		"/home/jrj/code/FeUPSU/build/libOTe/cryptoTools/tests_cryptoTools/cmake_install.cmake",
+		"/home/jrj/code/FeUPSU/build/libOTe/cryptoTools/frontend_cryptoTools/cmake_install.cmake",
+		"/home/jrj/code/FeUPSU/build/libOTe/libOTe/cmake_install.cmake",
+		"/home/jrj/code/FeUPSU/build/libOTe/libOTe_Tests/cmake_install.cmake",
+		"/home/jrj/code/FeUPSU/build/libOTe/frontend/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
