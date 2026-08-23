@@ -3,17 +3,17 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-用法: scripts/run.sh [--profile lan|wan-100|wan-10|wan-1|off] [--iface <网卡>] [--] [程序参数...]
-示例: scripts/run.sh --profile lan -- --effective_bitlength 114 --hamming_weight 19
+Usage: scripts/run.sh [--profile lan|wan-100|wan-10|wan-1|off] [--iface <interface>] [--] [program arguments...]
+Example: scripts/run.sh --profile lan -- --effective_bitlength 114 --hamming_weight 19
 
-可选网络配置:
-  lan     : 10 Gbps, RTT ≈ 0.2 ms (单向 0.1 ms)
-  wan-100 : 100 Mbps, RTT ≈ 80 ms (单向 40 ms)
-  wan-10  : 10 Mbps, RTT ≈ 80 ms (单向 40 ms)
-  wan-1   : 1 Mbps, RTT ≈ 80 ms (单向 40 ms)
-  off     : 清理当前 tc 设置后退出
+Network profiles:
+  lan     : 10 Gbps, RTT approximately 0.2 ms (0.1 ms one way)
+  wan-100 : 100 Mbps, RTT approximately 80 ms (40 ms one way)
+  wan-10  : 10 Mbps, RTT approximately 80 ms (40 ms one way)
+  wan-1   : 1 Mbps, RTT approximately 80 ms (40 ms one way)
+  off     : remove the current tc configuration and exit
 
-可通过环境变量 NETEM_IFACE 指定默认网卡 (默认 lo)。
+Set the default interface with NETEM_IFACE (default: lo).
 EOF
   exit 0
 }
@@ -22,7 +22,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BINARY="$ROOT/build/main-cwpsu"
 if [ ! -f "$BINARY" ]; then
   echo "Binary not found: $BINARY" >&2
-  echo "请先运行 cmake && ninja 构建 main-cwpsu" >&2
+  echo "Build main-cwpsu with cmake and ninja first" >&2
   exit 1
 fi
 
@@ -34,7 +34,7 @@ while (($#)); do
   case "$1" in
     --profile)
       if (($# < 2)); then
-        echo "--profile 需要一个参数" >&2
+        echo "--profile requires an argument" >&2
         exit 1
       fi
       PROFILE="$2"
@@ -42,7 +42,7 @@ while (($#)); do
       ;;
     --iface)
       if (($# < 2)); then
-        echo "--iface 需要一个参数" >&2
+        echo "--iface requires an argument" >&2
         exit 1
       fi
       IFACE="$2"
@@ -97,7 +97,7 @@ apply_profile() {
     off|"")
       ;;
     *)
-      echo "未知的网络配置: $profile" >&2
+      echo "Unknown network profile: $profile" >&2
       exit 1
       ;;
   esac
@@ -112,7 +112,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 if [ -n "$PROFILE" ] && [ "$PROFILE" != "off" ]; then
-  echo "[run.sh] 应用网络配置 '$PROFILE' 于接口 '$IFACE'" >&2
+  echo "[run.sh] Applying network profile '$PROFILE' to interface '$IFACE'" >&2
   apply_profile "$PROFILE" "$IFACE"
   APPLIED_PROFILE=1
 elif [ "$PROFILE" = "off" ]; then

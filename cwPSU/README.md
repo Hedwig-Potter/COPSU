@@ -1,130 +1,288 @@
-# cwPSU · 运行与实验指南
+# cwPSU: Build, Deployment, and Experiment Guide
 
-代码对应论文《PEPSI: Practically Efficient Private Set Intersection in the Unbalanced Setting》（USENIX Security 2024）。本仓库提供 cwPSU 主实现、OSN/OT 依赖与若干实验脚本。本文档聚焦“如何运行”：从准备依赖、构建、执行单次或批量实验，到收集结果与排查常见问题。
-## 目录结构概览
+This repository contains the cwPSU implementation, its OT/OSN dependencies,
+and experiment scripts used for comparison with FeUPSU. The implementation is
+based on the constant-weight techniques used by PEPSI, *Practically Efficient
+Private Set Intersection in the Unbalanced Setting* (USENIX Security 2024).
 
-| 路径 | 说明 |
+## Recommended deployment
+
+Run `cwpsu-client` and `cwpsu-server` as independent processes on the same
+x86-64 Ubuntu host. They communicate through loopback TCP, while `tc netem` on
+`lo` emulates LAN and WAN environments. This avoids exposing protocol ports to
+the Internet and prevents public-network jitter from affecting the benchmark.
+
+| Resource | Recommendation |
 | --- | --- |
-| `src/` | cwPSU/PEPSI 主实现与 `main-*` / `main-cwpsu` 可执行入口。 |
-| `libOTe/`, `osn/` | OT/OSN 依赖源代码，通过 CMake `add_subdirectory` 编译。 |
-| `scripts/` | 运行脚本 (`run.sh`, `run_batch.sh`) 及网络仿真封装。 |
-| `experiments/` | 纯 OpenMP/C++ 实验程序与绘图/分析脚本。 |
-| `results/`, `run.log` | 批量实验记录与输出 CSV。 |
-| `build/` | CMake 生成目录，包含 `main-cwpsu`, `main-base`, `main2`, `osn_demo` 等二进制与 `compile_commands.json`。 |
-| `vcpkg/` | 建议放置 vcpkg 副本并安装全部第三方依赖（SEAL/GSL/zstd 等）。 |
+| OS | Ubuntu Server 22.04 or 24.04 LTS, x86-64 |
+| CPU | At least 16 vCPUs; 32 or more recommended |
+| Memory | At least 64 GiB; 128 GiB recommended |
+| Storage | At least 80 GiB SSD |
+| Privileges | A sudo user; `tc netem` requires `CAP_NET_ADMIN` |
 
-## 先决条件
+Experiments with `server_set=2^30` can consume substantial CPU time and memory.
+Validate the environment with `2^18` first, then scale gradually while using
+`free -h`, `vmstat 1`, and `htop`. Do not treat swap as a replacement for
+physical memory.
 
-1. **系统工具**
-	- CMake ≥ 3.16，推荐配合 Ninja (`cmake -G Ninja`)。
-	- GCC ≥ 10 或 Clang ≥ 12，完整支持 C++17 与 OpenMP。
-	- Python 3（用于少量辅助脚本，可选）。
+Permute+Share is an actual two-party OSN protocol: the Client supplies the
+permutation, the Server supplies the random vector, and neither party learns
+the other's private input. Same-host runs use ports 39001--39004. A two-host
+deployment additionally requires `PSU_PERMUTE_HOST`, firewall configuration,
+transport protection, and access control.
 
-2. **第三方库**
-	- Microsoft SEAL
-	- Microsoft GSL、zstd、span-lite（由 vcpkg 解决）
-	- libsodium（libOTe 的 SimplestOT/SilentOT 需要）
-
-3. **vcpkg（推荐）**
-	- 仓库内已经自带 `cwPSU/vcpkg/`，也可使用全局安装。若路径不同，请将 `VCPKG_ROOT` 指向你的安装目录，或修改 `src/CMakeLists.txt` 中的 `CMAKE_TOOLCHAIN_FILE`。
-
-## 初始化仓库
+## System dependencies
 
 ```bash
-git clone <repo> cwPSU
-cd cwPSU
-git submodule update --init --recursive   # 拉取 libOTe、cryptoTools 等依赖
+sudo apt update
+sudo apt install -y \
+  build-essential cmake ninja-build git curl zip unzip tar pkg-config \
+  autoconf automake autoconf-archive libtool \
+  python3 python3-pip iproute2 libsodium-dev
 ```
 
-## 快速构建 main-cwpsu
-
-> `scripts/run.sh` 默认在 `build/main-cwpsu` 查找二进制，因此推荐直接将构建目录设为 `build/`。
+Verify the main tools:
 
 ```bash
-cmake -S src -B build \
-  -GNinja \
+cmake --version
+g++ --version
+ninja --version
+tc -V
+```
+
+## Source tree and vcpkg
+
+Clone nested dependencies:
+
+```bash
+git clone --recurse-submodules <repository-url> psu-workspace
+cd psu-workspace
+git submodule update --init --recursive
+```
+
+For an uploaded archive, verify that `cwPSU/libOTe/cryptoTools/` and
+`cwPSU/osn/` are populated.
+
+cwPSU can use its bundled `cwPSU/vcpkg/` tree or a shared vcpkg installation at
+the workspace root. A shared installation can be prepared with:
+
+```bash
+git clone https://github.com/microsoft/vcpkg.git vcpkg
+./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+./vcpkg/vcpkg install \
+  'seal[zlib,zstd,ms-gsl]' ms-gsl zstd span-lite libsodium \
+  boost-system boost-thread boost-regex
+```
+
+The Microsoft GSL port is `ms-gsl`. Preserve the vcpkg binary cache or disk
+snapshot to avoid rebuilding all dependencies on every cloud instance.
+
+## Release build
+
+From a workspace containing `cwPSU/` and `vcpkg/`:
+
+```bash
+VCPKG_ROOT="$PWD/vcpkg"
+
+cmake -S cwPSU/src -B cwPSU/build -GNinja \
   -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_TOOLCHAIN_FILE=$(pwd)/vcpkg/scripts/buildsystems/vcpkg.cmake \
-  -DSEAL_DIR=$(pwd)/vcpkg/installed/x64-linux/share/SEAL \
-  -DMicrosoft.GSL_DIR=$(pwd)/vcpkg/installed/x64-linux/share/Microsoft.GSL \
-  -Dzstd_DIR=$(pwd)/vcpkg/installed/x64-linux/share/zstd
+  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+  -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+  -DSEAL_DIR="$VCPKG_ROOT/installed/x64-linux/share/seal" \
+  -DMicrosoft.GSL_DIR="$VCPKG_ROOT/installed/x64-linux/share/Microsoft.GSL" \
+  -Dzstd_DIR="$VCPKG_ROOT/installed/x64-linux/share/zstd"
 
-cmake --build build -j
+cmake --build cwPSU/build -j "$(nproc)"
 ```
 
-构建完成后你会得到：
+If the bundled vcpkg tree is used, set `VCPKG_ROOT="$PWD/cwPSU/vcpkg"` instead.
 
-- `build/main-cwpsu`: cwPSU 主程序（默认启用 SEAL、OpenMP、OSN）。
-- `build/main-base`, `build/main2`: 其他实验入口（同样依赖 SEAL）。
-- `build/osn_demo`: OSN 单独演示程序。
-- `build/libOTe/*`: OT/OSN 依赖生成产物。
-- `build/compile_commands.json`: IDE/静态分析可用的编译数据库。
-
-## 运行单次实验
-
-脚本 `scripts/run.sh` 提供网络仿真封装 (tc netem) 并执行 `main-cwpsu`：
+Check the executables:
 
 ```bash
-scripts/run.sh \
-  --profile lan \
-  --iface lo \
-  -- \
-  --server_set $((1<<20)) \
-  --effective_bitlength 114 \
-  --hamming_weight 19
+test -x cwPSU/build/main-cwpsu
+test -x cwPSU/build/cwpsu-client
+test -x cwPSU/build/cwpsu-server
+ldd cwPSU/build/cwpsu-client | grep 'not found' && exit 1 || true
 ```
 
-参数说明：
+Other generated targets may include `main-base`, `main2`, `osn_demo`, and the
+libOTe build products.
 
-| 参数 | 作用 |
-| --- | --- |
-| `--profile` | 选择网络配置：`lan`、`wan-100`、`wan-10`、`wan-1` 或 `off` (仅清理 netem)。若省略则默认 `NETEM_PROFILE` 或 `native`。 |
-| `--iface` | 指定应用 netem 的网卡，默认 `NETEM_IFACE` 或 `lo`。非 root 用户运行时会自动通过 `sudo tc`。 |
-| `--` | 之后的参数将原样传递给 `main-cwpsu`。常用参数：`--server_set <N>`、`--effective_bitlength <bits>`、`--hamming_weight <hw>`。 |
+## Running independent Client and Server processes
 
-脚本在启动时会配置 `tc qdisc`，退出时自动清理；也可以显式执行 `scripts/run.sh --profile off` 清除残留设置。
-
-## 批量跑全配置
-
-`scripts/run_batch.sh` 预设了若干网络 profile、服务器集合大小（2^18/2^20/2^22）以及 `(bitlength, hamming_weight)` 组合，会循环调用 `scripts/run.sh`：
+This smoke test uses 32-bit elements, `hw=7`, one BFV batching vector on the
+Client, and effective bit length `32-log2(8192)=19`:
 
 ```bash
-NETEM_IFACE=lo scripts/run_batch.sh
+cd cwPSU
+mkdir -p results
+
+./build/cwpsu-server >results/cwpsu_server.log 2>&1 &
+CWPSU_SERVER_PID=$!
+
+for i in $(seq 1 50); do
+  ss -ltn | grep -q ':39002 ' && break
+  sleep 0.1
+done
+
+PSU_RESULTS_FILE=results/cloud_smoke.csv \
+./build/cwpsu-client \
+  --server-host 127.0.0.1 \
+  --server-set $((1<<18)) \
+  --client-set $((1<<13)) \
+  --effective-bitlength 19 \
+  --hamming-weight 7
+
+kill "$CWPSU_SERVER_PID"
+wait "$CWPSU_SERVER_PID" 2>/dev/null || true
 ```
 
-脚本结束时会自动清除 netem。所有运行输出（包括 cwPSU 程序自身日志）可在 `run.log` 或你指定的输出重定向中查看，性能数据可写入 `results/`。
+cwPSU uses TCP 39001 for Permute+Share control, 39002 for the main PSU
+service, 39003 for the masked phase, and 39004 for OSN data. These ports do not
+need to be exposed by the cloud firewall for same-host deployment.
 
-## 编译 OpenMP 实验程序
+```bash
+ss -ltnp | grep -E ':3900[1-4] '
+```
 
-`experiments/` 目录下的 `script.cpp` 不依赖 SEAL，只需 OpenMP：
+## Protocol outline
+
+1. Client and Server encode and batch their constant-weight representations.
+2. Client encrypts its batched query and sends it to the Server.
+3. During the offline phase, the Client supplies a permutation and the Server
+   supplies a random vector to Permute+Share. They receive additive shares of
+   the permuted vector.
+4. Server evaluates EEQ, constructs the encrypted indicator and inverse
+   indicator, and adds the random vector used by Permute+Share.
+5. Server sends the masked ciphertext and the encrypted Server share.
+6. Client applies the same permutation to the ciphertext slots, subtracts its
+   own share and the encrypted Server share, permutes the elements, splits
+   elements that exceed the plaintext modulus, and performs ciphertext--plain
+   multiplication.
+7. Client returns the encrypted masked elements, and Server decrypts the set
+   difference output.
+
+## Network emulation
+
+Check kernel support:
+
+```bash
+sudo modprobe sch_netem
+sudo tc qdisc replace dev lo root netem delay 1ms
+sudo tc qdisc del dev lo root
+```
+
+| Profile | Rate | One-way delay | Approximate RTT |
+| --- | ---: | ---: | ---: |
+| `lan` | 10 Gbit/s | 0.1 ms | 0.2 ms |
+| `wan-100` | 100 Mbit/s | 40 ms | 80 ms |
+| `wan-10` | 10 Mbit/s | 40 ms | 80 ms |
+| `wan-1` | 1 Mbit/s | 40 ms | 80 ms |
+
+Batch scripts acquire sudo credentials once, keep them alive, and remove the
+qdisc at exit. Use the loopback interface for same-host experiments:
+
+```bash
+cd cwPSU
+NETEM_IFACE=lo bash scripts/run_client_server_net_batch.sh
+```
+
+Some batch helpers call the integrated `build/main-cwpsu` entry point. That
+entry point contains both parties in one process but still uses loopback TCP.
+Use `cwpsu-client` and `cwpsu-server` directly when strict process isolation is
+required.
+
+After an abnormal termination:
+
+```bash
+sudo tc qdisc del dev lo root 2>/dev/null || true
+```
+
+Never apply a restrictive WAN profile to the public interface carrying the
+active SSH connection.
+
+## Batch experiments
+
+```bash
+NETEM_IFACE=lo bash scripts/run_effective_hw_batch.sh
+NETEM_IFACE=lo bash scripts/run_client_server_net_batch.sh
+```
+
+The current effective-HW batch uses the selected protocol parameters for
+32-bit and 128-bit scenarios. Scripts write CSV files to `results/`, keep sudo
+credentials alive for `tc`, and clean up network shaping on exit. Do not run
+cwPSU and FeUPSU benchmarks concurrently when comparing them.
+
+The lightweight OpenMP experiment under `experiments/` can be built separately:
 
 ```bash
 cmake -S experiments -B build/experiments
 cmake --build build/experiments -j
 ```
 
-生成的 `build/experiments/script` 可用于轻量模拟或与 `experiments/*.py` 配合绘图。
+## Result metrics (schema version 2)
 
-## 结果与分析
+Times are in milliseconds and communication counters are in bytes.
 
-- `results/`: 保存论文表格/图中使用的 CSV。
-- `osn_demo_cache_16/`: 预生成的 OSN 数据，`osn_demo` 可直接消费。
-- `run.log`: `scripts/run.sh` 默认会将 stdout/stderr 同步到该文件（可按需重定向）。
+- `time_setup`, `comm_setup`: Client key/context generation, serialized
+  parameters and evaluation keys, and Server-side loading/setup.
+- `time_offline_comp`: both parties' encoding and batching, Client query
+  encryption, and both parties' Permute+Share computation.
+- `time_offline_comm`, `comm_offline`: encrypted query transfer and the
+  Permute+Share control/OSN traffic.
+- `time_online_comp`: Server EEQ, indicator/inverse-indicator construction,
+  random-vector addition and encrypted share preparation; Client decryption,
+  encrypted permutation, share removal, segmented plaintext multiplication;
+  and final Server decryption.
+- `time_online_comm`, `comm_online`: Server-to-Client masked ciphertext/share
+  response and Client-to-Server final encrypted product.
 
-`experiments/compare.py`、`experiments/plots.ipynb` 等脚本可将 `results/` 中的数据绘图或与其他实现比较。
+`time_permute_share_client_compute_us` and
+`time_permute_share_server_compute_ms` use thread CPU time where possible.
+`time_permute_share_network_ms` is wall time, while
+`time_permute_share_comm_ms` subtracts the critical-path computation estimate.
 
-## 常见问题排查
+Diagnostic fields such as `time_server`, `time_extract_response`,
+`time_permute_share_network_ms`, `comm_request`, and `comm_response` overlap the
+canonical phase totals. Do not sum them a second time.
 
-1. **`Binary not found: build/main-cwpsu`**：确认 `cmake -S src -B build`，并使用与脚本一致的 `build/` 输出目录；若放在其他目录需手动修改 `scripts/run.sh` 中的路径。
-2. **`SEAL not found`**：确保 vcpkg 安装 `seal`，并在 configure 阶段提供 `-DCMAKE_TOOLCHAIN_FILE` 或 `-DSEAL_DIR`。运行 `vcpkg install seal microsoft-gsl zstd libsodium` 以安装缺失依赖。
-3. **`tc: permission denied`**：网络仿真需 root；可预先 `sudo scripts/run.sh --profile lan ...`、配置无密码 sudo，或直接跳过 netem (`--profile off`)。
-4. **OpenMP 未启用**：确认编译器支持 `-fopenmp` (GCC) 或 `-fopenmp`/`-qopenmp` (Clang/ICC)。CMake 日志里寻找 `Found OpenMP` 字样。
-5. **编译速度慢 / 内存占用高**：可将 `ENABLE_AVX` 打开以获得更快运行，也可在 `cmake --build` 时附加 `-j <N>` 控制并发。
+## Fair comparison with FeUPSU
 
-## 进一步定制
+Use the same instance type, compiler, Release configuration, thread policy,
+element length, Client and Server cardinalities, intersection construction,
+repetition count, and `tc` profile. Compare the canonical setup/offline/online
+metrics from schema version 2. cwPSU deliberately performs Permute+Share in its
+offline phase, so phase-level differences should be interpreted together with
+the protocol definitions; total computation and total communication provide
+the most direct end-to-end comparison.
 
-- 若需在 Docker/CI 中构建，可将前述 `cmake` 命令写入脚本再挂载 `vcpkg` 缓存。
-- 可以通过 `-DCMAKE_BUILD_TYPE=RelWithDebInfo` 在保证性能的同时保留调试符号。
-- 如果你维护不同的 vcpkg triplet（如 `x64-linux-release`），将 `-DCMAKE_TOOLCHAIN_FILE` 指向相应路径，并同步调整 `*-DIR` 变量。
+## Repository layout
 
-如在运行过程中遇到问题，可在 `run.log`、`build/CMakeFiles/CMakeOutput.log` 或 `results/*.csv` 中查找线索，或配合 `VERBOSE=1 cmake --build build` 观察完整编译命令。
+| Path | Purpose |
+| --- | --- |
+| `src/` | Main cwPSU implementation and executable entry points. |
+| `libOTe/`, `osn/` | OT and OSN source dependencies. |
+| `scripts/` | Run, network emulation, and batch helpers. |
+| `experiments/` | Lightweight experiments and plotting utilities. |
+| `results/` | Experiment CSV files. |
+| `build/` | Generated CMake build tree and executables. |
+| `vcpkg/` | Optional bundled vcpkg installation. |
+
+## Troubleshooting
+
+1. **`build/main-cwpsu` not found:** configure with `cmake -S src -B build` so
+   the output directory matches the scripts.
+2. **SEAL not found:** verify `CMAKE_TOOLCHAIN_FILE` and `SEAL_DIR`, then
+   install the dependencies listed above.
+3. **`tc: permission denied`:** run `sudo -v`, configure narrowly scoped sudo
+   permission, or use `--profile off`.
+4. **OpenMP not enabled:** check the CMake output for `Found OpenMP` and use a
+   compiler with OpenMP support.
+5. **Slow build or high memory use:** limit build parallelism with
+   `cmake --build build -j <N>`; enable only CPU features supported by the
+   deployment host.
+
+Record the Git revision, instance type, CPU and memory, compiler version,
+Release configuration, network profile, and every raw CSV used in a reported
+comparison.

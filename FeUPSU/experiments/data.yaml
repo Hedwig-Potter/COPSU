@@ -1,10 +1,8 @@
-# find_comp_hw：搜索在不同有效比特长度下的最优汉明权重，参数范围可在此配置
 find_comp_hw:
     # effective_bitlength: [128]
     effective_bitlength: [32]
     repeat: 1
 
-# compare_w_dipsi：复现实验中与 DIPSI 的性能对比，遍历多组 μ 和两种优化模式
 # compare_w_dipsi:
 #     effective_bitlength: 19
 #     mu: [109,346,1204,4455,17102,66972]

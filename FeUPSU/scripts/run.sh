@@ -3,19 +3,19 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-用法: scripts/run.sh [--profile lan|wan-100|wan-10|wan-1|off] [--iface <网卡>] [--] [程序参数...]
+Usage: scripts/run.sh [--profile lan|wan-100|wan-10|wan-1|off] [--iface <interface>] [--] [program arguments...]
 
-示例:
+Example:
   scripts/run.sh --profile lan -- --effective_bitlength 114 --hw 32
 
-可用网络配置:
-  lan     : 模拟 10 Gbps, RTT≈0.2 ms (单向 0.1 ms)
-  wan-100 : 模拟 100 Mbps, RTT≈80 ms (单向 40 ms)
-  wan-10  : 模拟 10 Mbps, RTT≈80 ms (单向 40 ms)
-  wan-1   : 模拟 1 Mbps, RTT≈80 ms (单向 40 ms)
-  off     : 仅清除现有的 tc 设置
+Network profiles:
+  lan     : 10 Gbps, RTT approximately 0.2 ms (0.1 ms one way)
+  wan-100 : 100 Mbps, RTT approximately 80 ms (40 ms one way)
+  wan-10  : 10 Mbps, RTT approximately 80 ms (40 ms one way)
+  wan-1   : 1 Mbps, RTT approximately 80 ms (40 ms one way)
+  off     : remove the current tc configuration and exit
 
-可通过环境变量 NETEM_IFACE 指定默认网卡 (默认为 lo)。
+Set the default interface with NETEM_IFACE (default: lo).
 EOF
   exit 0
 }
@@ -48,7 +48,7 @@ while (($#)); do
   case "$1" in
     --profile)
       if (($# < 2)); then
-        echo "--profile 需要一个参数" >&2
+        echo "--profile requires an argument" >&2
         exit 1
       fi
       PROFILE="$2"
@@ -56,7 +56,7 @@ while (($#)); do
       ;;
     --iface)
       if (($# < 2)); then
-        echo "--iface 需要一个参数" >&2
+        echo "--iface requires an argument" >&2
         exit 1
       fi
       IFACE="$2"
@@ -116,7 +116,7 @@ apply_profile() {
         netem delay 40ms rate 1mbit limit 50000
       ;;
     *)
-      echo "未知的网络配置: $profile" >&2
+      echo "Unknown network profile: $profile" >&2
       exit 1
       ;;
   esac
@@ -131,7 +131,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 if [ -n "$PROFILE" ] && [ "$PROFILE" != "off" ]; then
-  echo "[run.sh] 应用网络配置 '$PROFILE' 于接口 '$IFACE'" >&2
+  echo "[run.sh] Applying network profile '$PROFILE' to interface '$IFACE'" >&2
   apply_profile "$PROFILE" "$IFACE"
   APPLIED_PROFILE=1
 elif [ "$PROFILE" = "off" ]; then

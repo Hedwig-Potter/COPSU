@@ -1,6 +1,7 @@
 """
-根据 data.yaml 中的 find_comp_hw 配置，遍历候选的权重参数，
-调用 `build/main2` 搜索满足 cwPSU 组合优化约束的常权码硬件参数。
+Iterate over candidate weights from the find_comp_hw configuration in
+data.yaml and invoke `build/main2` to find parameters satisfying the cwPSU
+constant-weight optimization constraints.
 """
 
 import yaml
@@ -21,10 +22,8 @@ def valid_hw(bl, hw):
         return False
     return True
     
-# 指向构建生成的 `main2` 可执行文件
 PATH_TO_MAIN2 = '../build/main2'
 
-# 读取配置并挨个尝试有效的 (bitlength, hamming weight) 组合
 with open('data.yaml') as f:
     data = yaml.load(f, Loader=yaml.FullLoader)
     params = data['find_comp_hw']
@@ -33,7 +32,6 @@ with open('data.yaml') as f:
             for hw in range(1, bl):
                 if not valid_hw(bl, hw):
                     continue
-                # 组合满足约束后调用可执行文件，输出写入 stdout 供外部分析
                 cmd = PATH_TO_MAIN2 + ' ' + \
                     f"-l {bl} " \
                     f"-h {hw} " \
@@ -42,5 +40,4 @@ with open('data.yaml') as f:
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE
                 )
-        # 打印当前重复轮次完成情况，便于长时间运行时观察进度
         print(f"Finished {rep}")

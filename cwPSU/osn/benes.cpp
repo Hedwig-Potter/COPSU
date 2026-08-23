@@ -12,6 +12,17 @@
 using namespace std;
 using namespace oc;
 
+namespace {
+block share_add(block a, block b, uint64_t modulus)
+{
+	if (modulus == 0) return a ^ b;
+	uint64_t av = 0, bv = 0;
+	memcpy(&av, &a, sizeof(av));
+	memcpy(&bv, &b, sizeof(bv));
+	return toBlock(0ULL, static_cast<u64>((av + bv) % modulus));
+}
+}
+
 bool Benes::dump(const std::string& filename)
 {
 	ofstream out(filename, ios::out | ios::binary);
@@ -376,7 +387,8 @@ void Benes::gen_benes_eval(int n, int lvl_p, int perm_idx, vector<uint64_t> &src
 }
 
 void Benes::gen_benes_masked_evaluate(int n, int lvl_p, int perm_idx, vector<oc::block> &src,
-							   vector<vector<array<osuCrypto::block, 2>>> &ot_output)
+							   vector<vector<array<osuCrypto::block, 2>>> &ot_output,
+							   uint64_t modulus)
 {
 	int levels, i, j, x, s;
 	vector<oc::block> bottom1;
@@ -393,8 +405,8 @@ void Benes::gen_benes_masked_evaluate(int n, int lvl_p, int perm_idx, vector<oc:
 		{
 			temp_block = ot_output[lvl_p][perm_idx];
 			memcpy(temp_int, &temp_block, sizeof(temp_int));
-			src[0] = src[0] ^ temp_int[0];
-			src[1] = src[1] ^ temp_int[1];
+			src[0] = share_add(src[0], temp_int[0], modulus);
+			src[1] = share_add(src[1], temp_int[1], modulus);
 			if (switched[lvl_p][perm_idx] == 1)
 			{
 				temp = src[0];
@@ -408,8 +420,8 @@ void Benes::gen_benes_masked_evaluate(int n, int lvl_p, int perm_idx, vector<oc:
 		{
 			temp_block = ot_output[lvl_p + 1][perm_idx];
 			memcpy(temp_int, temp_block.data(), sizeof(temp_int));
-			src[0] = src[0] ^ temp_int[0];
-			src[1] = src[1] ^ temp_int[1];
+			src[0] = share_add(src[0], temp_int[0], modulus);
+			src[1] = share_add(src[1], temp_int[1], modulus);
 			if (switched[lvl_p + 1][perm_idx] == 1)
 			{
 				temp = src[0];
@@ -424,8 +436,8 @@ void Benes::gen_benes_masked_evaluate(int n, int lvl_p, int perm_idx, vector<oc:
 	{
 		temp_block = ot_output[lvl_p][perm_idx];
 		memcpy(temp_int, temp_block.data(), sizeof(temp_int));
-		src[0] = src[0] ^ temp_int[0];
-		src[1] = src[1] ^ temp_int[1];
+		src[0] = share_add(src[0], temp_int[0], modulus);
+		src[1] = share_add(src[1], temp_int[1], modulus);
 		if (switched[lvl_p][perm_idx] == 1)
 		{
 			temp = src[0];
@@ -435,8 +447,8 @@ void Benes::gen_benes_masked_evaluate(int n, int lvl_p, int perm_idx, vector<oc:
 
 		temp_block = ot_output[lvl_p + 1][perm_idx];
 		memcpy(temp_int, temp_block.data(), sizeof(temp_int));
-		src[1] = src[1] ^ temp_int[0];
-		src[2] = src[2] ^ temp_int[1];
+		src[1] = share_add(src[1], temp_int[0], modulus);
+		src[2] = share_add(src[2], temp_int[1], modulus);
 		if (switched[lvl_p + 1][perm_idx] == 1)
 		{
 			temp = src[1];
@@ -446,8 +458,8 @@ void Benes::gen_benes_masked_evaluate(int n, int lvl_p, int perm_idx, vector<oc:
 
 		temp_block = ot_output[lvl_p + 2][perm_idx];
 		memcpy(temp_int, temp_block.data(), sizeof(temp_int));
-		src[0] = src[0] ^ temp_int[0];
-		src[1] = src[1] ^ temp_int[1];
+		src[0] = share_add(src[0], temp_int[0], modulus);
+		src[1] = share_add(src[1], temp_int[1], modulus);
 		if (switched[lvl_p + 2][perm_idx] == 1)
 		{
 			temp = src[0];
@@ -472,8 +484,8 @@ void Benes::gen_benes_masked_evaluate(int n, int lvl_p, int perm_idx, vector<oc:
 		// std::cout<<" input 1 : "<<src[i]<< " input 2 : "<<src[i^1]<<"ot message :"<<temp_int[0]
 		//<<" "<<temp_int[1]<<std::endl;
 
-		src[i] = src[i] ^ temp_int[0];
-		src[i ^ 1] = src[i ^ 1] ^ temp_int[1]; //  ^ or | ??
+		src[i] = share_add(src[i], temp_int[0], modulus);
+		src[i ^ 1] = share_add(src[i ^ 1], temp_int[1], modulus);
 
 		for (j = 0; j < 2; ++j)
 		{
@@ -494,8 +506,8 @@ void Benes::gen_benes_masked_evaluate(int n, int lvl_p, int perm_idx, vector<oc:
 		// cout<<"pushing source: "<<src[values]<<"\n";
 	}
 
-	gen_benes_masked_evaluate(n - 1, lvl_p + 1, perm_idx, bottom1, ot_output);
-	gen_benes_masked_evaluate(n - 1, lvl_p + 1, perm_idx + values / 4, top1, ot_output);
+	gen_benes_masked_evaluate(n - 1, lvl_p + 1, perm_idx, bottom1, ot_output, modulus);
+	gen_benes_masked_evaluate(n - 1, lvl_p + 1, perm_idx + values / 4, top1, ot_output, modulus);
 
 	// std::vector<uint64_t> test_vec(src.size());
 	for (i = 0; i < values - 1; i += 2)
@@ -515,8 +527,8 @@ void Benes::gen_benes_masked_evaluate(int n, int lvl_p, int perm_idx, vector<oc:
 
 		temp_block = ot_output[lvl_p + levels - 1][perm_idx + i / 2];
 		memcpy(temp_int, temp_block.data(), sizeof(temp_int));
-		src[i] = src[i] ^ temp_int[s];
-		src[i ^ 1] = src[i ^ 1] ^ temp_int[1 - s];
+		src[i] = share_add(src[i], temp_int[s], modulus);
+		src[i ^ 1] = share_add(src[i ^ 1], temp_int[1 - s], modulus);
 	}
 
 	int idx = int(ceil(values * 0.5));
@@ -540,5 +552,4 @@ osuCrypto::BitVector Benes::return_gen_benes_switches(int values)
 		}
 	return switches;
 }
-
 

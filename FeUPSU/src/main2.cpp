@@ -30,24 +30,33 @@ int main(int argc, char* argv[]) {
     // These two will vary
     uint64_t effective_bitlength = 19;
     uint64_t hw=8;
+    uint64_t client_set = 0;
+    uint64_t plain_modulus_bits = 20;
 
     static struct option long_options[] = {
-        {"server_set", optional_argument, 0, 's'},
-        {"task", optional_argument, 0, 't'},
-        {"effective_bitlength", optional_argument, 0, 'l'},
-        {"hamming_weight", optional_argument, 0, 'h'},
+        {"server_set", required_argument, 0, 's'},
+        {"client_set", required_argument, 0, 'c'},
+        {"task", required_argument, 0, 't'},
+        {"effective_bitlength", required_argument, 0, 'l'},
+        {"hamming_weight", required_argument, 0, 'h'},
         {"time_OTSSS", no_argument, 0, 'o'},
+        {"plain_modulus_bits", required_argument, 0, 'p'},
         {0, 0, 0, 0}
     };
 
     int option_index = 0;
     int c;
 
-    while ((c = getopt_long(argc, argv, "s:t:l:h:o", long_options, &option_index)) != -1) {
+    while ((c = getopt_long(argc, argv, "s:c:t:l:h:op:", long_options, &option_index)) != -1) {
         switch (c) {
             case 's':
                 if (optarg) {
                     server_set = strtoull(optarg, nullptr, 10);
+                }
+                break;
+            case 'c':
+                if (optarg) {
+                    client_set = strtoull(optarg, nullptr, 10);
                 }
                 break;
             case 't':
@@ -64,7 +73,7 @@ int main(int argc, char* argv[]) {
                     } else if (val == "circuitPSU") {
                         task = circuitPSU;
                     } else {
-                        cerr << "[WARN] 未识别的任务类型 '" << val << "'，默认使用 PSU" << endl;
+                        cerr << "[WARN] Unrecognized task '" << val << "'，using PSU by default" << endl;
                         task = PSU;
                     }
                 }
@@ -82,6 +91,9 @@ int main(int argc, char* argv[]) {
             case 'o':
                 time_otsss = true;
                 break;
+            case 'p':
+                if (optarg) plain_modulus_bits = strtoull(optarg, nullptr, 10);
+                break;
             case '?':
                 // getopt_long already printed the error
                 return 1;
@@ -93,7 +105,10 @@ int main(int argc, char* argv[]) {
     Server* server = new Server();
     Client client(server);
 
-    Params params(task, server_set, effective_bitlength, hw);
+    Params params(task, server_set, effective_bitlength, hw, client_set);
+    // The hw-search experiment uses a fixed BFV plaintext modulus. This is
+    // independent of the original element length and the CW-code capacity.
+    params.prime_bitlength = plain_modulus_bits;
     params.time_otsss = time_otsss;
     client.run_protocol(params);
 

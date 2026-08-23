@@ -1,143 +1,126 @@
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <iostream>
-#include <unordered_map>
+#include <stdexcept>
 #include <vector>
 
+#include "upsica/dh_oprf.h"
 #include "upsica/fhe_wrapper.h"
-#include "upsica/online_phase.h"
-#include "upsica/preparation_phase.h"
+#include "upsica/vbf_psi_ca.h"
 
 namespace {
 
-uint64_t TestSplitMix64(uint64_t x) {
-    x += 0x9e3779b97f4a7c15ULL;
-    x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
-    x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
-    return x ^ (x >> 31);
-}
+void TestSenderEvaluatorHasNoSecretKey() {
+    upsica::crypto::FheParams params{4096, 20};
+    upsica::crypto::FheWrapper receiver(params);
+    receiver.Initialize();
+    auto input = receiver.Encrypt(receiver.Encode({5, 7}));
 
-std::pair<uint64_t, uint64_t> FindX1CollisionPair(uint64_t modulus) {
-    std::unordered_map<uint64_t, uint64_t> seen;
-    for (uint64_t v = 1; v < 500000; ++v) {
-        uint64_t x1 = TestSplitMix64(v) % modulus;
-        auto it = seen.find(x1);
-        if (it != seen.end() && it->second != v) {
-            return {it->second, v};
-        }
-        seen.emplace(x1, v);
+    upsica::crypto::FheWrapper sender(params);
+    sender.InitializeEvaluator(receiver.ExportEvaluationKeys());
+    auto evaluated = sender.EvaluatePolynomial(input, {3, 2});
+    auto decoded = receiver.Decrypt(evaluated);
+    assert(decoded.slots[0] == 13 && decoded.slots[1] == 17);
+
+    bool rejected = false;
+    try {
+        (void)sender.Decrypt(evaluated);
+    } catch (const std::runtime_error&) {
+        rejected = true;
     }
-    return {0, 0};
+    assert(rejected && "Sender must not hold the FHE secret key");
 }
 
-void TestProtocolHappyPath() {
-    const std::vector<uint64_t> sender = {10, 20, 30, 40};
-    const std::vector<uint64_t> receiver = {30, 40, 99};
+void TestShuffledOprfUsesOneBatchBlind() {
+    upsica::crypto::ShuffledDhOprf sender({"sha256_to_curve", "sha256"});
+    sender.GenerateKeypair();
+    const std::vector<std::vector<uint8_t>> inputs = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}};
+    const auto beta = sender.GenerateBlindFactor();
+    std::vector<upsica::crypto::OprfMessage> blinded;
+    for (const auto& input : inputs) blinded.push_back(sender.BlindWithFactor(input, beta));
+    auto shuffled = sender.EvaluateBatchShuffled(blinded);
+    std::vector<std::vector<uint8_t>> outputs;
+    for (const auto& response : shuffled) outputs.push_back(sender.Unblind(response, beta));
+    for (const auto& input : inputs) {
+        const auto expected = sender.EvaluateInput(input);
+        assert(std::find(outputs.begin(), outputs.end(), expected) != outputs.end());
+    }
+}
 
-    upsica::protocol::ProtocolConfig config;
-    config.bin_count = 16;
-    config.fhe_poly_modulus_degree = 4096;
+upsica::protocol::VbfPsiCaConfig SmallConfig() {
+    upsica::protocol::VbfPsiCaConfig config;
+    config.bin_count = 64;
     config.alpha_sub_bins = 4;
-    config.enable_polynomial_links = true;
-
-    auto prep = upsica::protocol::RunPreparation(sender, config);
-    auto out = upsica::protocol::RunOnline(receiver, prep);
-
-    assert(out.intersection_cardinality == 2 && "Intersection cardinality should be 2");
-#if UPSICA_ENABLE_SEAL
-    assert(out.used_fhe_online && "FHE online path should be enabled when SEAL is available");
-    assert(out.used_polynomial_links && "Polynomial links should be enabled");
-    assert(out.used_cuckoo_hashing && "Receiver should use cuckoo hashing");
-    assert(out.used_sender_simple_hashing && "Sender should use simple hashing");
-    assert(out.bin_count == config.fhe_poly_modulus_degree && "bin_count must be aligned to slot_count");
-    assert(out.alpha_sub_bins == config.alpha_sub_bins && "alpha_sub_bins mismatch");
-    assert(out.encrypted_query_slices == 3 && "Windowing should send encrypted x/x^2/x^3 query powers");
-    assert(out.sender_evaluated_slices == config.alpha_sub_bins * 3 &&
-        "Sender should evaluate P1/P2/P3 for each sub-bin");
-    assert(out.returned_ciphertexts == config.alpha_sub_bins * 3 &&
-        "Sender should return three ciphertexts per sub-bin");
-#endif
+    config.kv = 2;
+    config.vbf_item_bits = 46;
+    config.slice_bits = 19;
+    config.poly_modulus_degree = 4096;
+    return config;
 }
 
-void TestProtocolEmptyReceiver() {
-    const std::vector<uint64_t> sender = {1, 2, 3};
-    const std::vector<uint64_t> receiver = {};
-
-    upsica::protocol::ProtocolConfig config;
-    config.fhe_poly_modulus_degree = 4096;
-    config.alpha_sub_bins = 4;
-    config.enable_polynomial_links = true;
-
-    auto prep = upsica::protocol::RunPreparation(sender, config);
-    auto out = upsica::protocol::RunOnline(receiver, prep);
-
-    assert(out.intersection_cardinality == 0 && "Empty receiver set should produce zero cardinality");
+void TestVbfSenderPreparationUsesThreeBinsAndAllSlices() {
+    auto config = SmallConfig();
+    std::vector<upsica::protocol::ItemBytes> sender = {{1}, {2}, {3}, {4}};
+    auto prep = upsica::protocol::PrepareVbfPsiCaSender(sender, config);
+    assert(prep.slice_count == 3);
+    uint64_t inserted = 0;
+    for (const auto& bin : prep.sub_bin_sizes)
+        for (uint32_t count : bin) inserted += count;
+    assert(inserted == sender.size() * config.kv * config.hash_function_count);
+    for (const auto& bin : prep.polynomials)
+        for (const auto& sub_bin : bin) assert(sub_bin.size() == prep.slice_count);
 }
 
-void TestSealRoundTripAndPolynomial() {
-    upsica::crypto::FheParams params;
-    params.poly_modulus_degree = 8192;
-    params.plain_modulus_bits = 20;
+void TestVbfPsiCaEncryptedEndToEnd() {
+    auto config = SmallConfig();
+    std::vector<upsica::protocol::ItemBytes> sender = {{10}, {20}, {30}, {40}};
+    std::vector<upsica::protocol::ItemBytes> receiver = {{30}, {40}, {99}};
+    auto preparation = upsica::protocol::PrepareVbfPsiCaSender(sender, config);
+    auto batch = upsica::protocol::CreateReceiverOprfBatch(receiver);
+    auto responses = upsica::protocol::EvaluateReceiverOprfBatch(
+        preparation, batch.blinded_inputs);
+    auto state = upsica::protocol::BuildReceiverVbfState(batch, responses, config);
 
-    upsica::crypto::FheWrapper fhe(params);
-    fhe.Initialize();
-
-    // p(x) = 3 + 2x, evaluated at slots [5, 7] -> [13, 17]
-    auto pt = fhe.Encode({5, 7});
-    auto ct = fhe.Encrypt(pt);
-    auto ct_eval = fhe.EvaluatePolynomial(ct, {3, 2});
-    auto pt_eval = fhe.Decrypt(ct_eval);
-
-    assert(pt_eval.slots.size() >= 2 && "Decoded slots should contain at least two values");
-    assert(pt_eval.slots[0] == 13 && "First slot polynomial evaluation mismatch");
-    assert(pt_eval.slots[1] == 17 && "Second slot polynomial evaluation mismatch");
+    upsica::crypto::FheWrapper receiver_fhe(
+        {config.poly_modulus_degree, config.plain_modulus_bits});
+    receiver_fhe.Initialize();
+    auto query = upsica::protocol::EncryptReceiverVbfQuery(
+        state, preparation.maximum_sub_bin_degree,
+        receiver_fhe, preparation.plain_modulus);
+    auto encrypted_response = upsica::protocol::EvaluateEncryptedVbfQuery(preparation, query);
+    auto cardinality = upsica::protocol::DecryptIntersectionCardinality(
+        state, encrypted_response, receiver_fhe, preparation.plain_modulus);
+    assert(cardinality == 2);
 }
 
-void TestPolynomialLinksDisabledStillRuns() {
-    const std::vector<uint64_t> sender = {101, 202, 303};
-    const std::vector<uint64_t> receiver = {202, 999};
-
-    upsica::protocol::ProtocolConfig config;
-    config.fhe_poly_modulus_degree = 4096;
-    config.alpha_sub_bins = 4;
-    config.enable_polynomial_links = false;
-
-    auto prep = upsica::protocol::RunPreparation(sender, config);
-    auto out = upsica::protocol::RunOnline(receiver, prep);
-
-    assert(out.intersection_cardinality >= 1 && "Root-only mode should still detect at least one match");
-}
-
-void TestPartitioningHandlesX1Collision() {
-    upsica::protocol::ProtocolConfig config;
-    config.fhe_poly_modulus_degree = 4096;
-    config.alpha_sub_bins = 4;
-    config.enable_polynomial_links = true;
-
-    // First run to resolve modulus.
-    auto prep_probe = upsica::protocol::RunPreparation({1}, config);
-    auto pair = FindX1CollisionPair(prep_probe.plain_modulus);
-    assert(pair.first != 0 && pair.second != 0 && "Need a real x1 collision pair");
-
-    std::vector<uint64_t> sender = {pair.first, pair.second, 777777};
-    std::vector<uint64_t> receiver = {pair.first, pair.second, 888888};
-
-    auto prep = upsica::protocol::RunPreparation(sender, config);
-    auto out = upsica::protocol::RunOnline(receiver, prep);
-
-    assert(out.intersection_cardinality >= 2 &&
-           "Partitioning/sub-bins should preserve matches under x1 collision");
+void TestReal128BitElements() {
+    auto config = SmallConfig();
+    upsica::protocol::ItemBytes common(16, 0xA5);
+    upsica::protocol::ItemBytes sender_only(16, 0x5A);
+    upsica::protocol::ItemBytes receiver_only(16, 0x3C);
+    auto preparation = upsica::protocol::PrepareVbfPsiCaSender(
+        {common, sender_only}, config);
+    auto batch = upsica::protocol::CreateReceiverOprfBatch({common, receiver_only});
+    auto responses = upsica::protocol::EvaluateReceiverOprfBatch(
+        preparation, batch.blinded_inputs);
+    auto state = upsica::protocol::BuildReceiverVbfState(batch, responses, config);
+    upsica::crypto::FheWrapper receiver_fhe({4096, 20});
+    receiver_fhe.Initialize();
+    auto query = upsica::protocol::EncryptReceiverVbfQuery(
+        state, preparation.maximum_sub_bin_degree, receiver_fhe, preparation.plain_modulus);
+    auto response = upsica::protocol::EvaluateEncryptedVbfQuery(preparation, query);
+    assert(upsica::protocol::DecryptIntersectionCardinality(
+               state, response, receiver_fhe, preparation.plain_modulus) == 1);
 }
 
 }  // namespace
 
 int main() {
-    TestProtocolHappyPath();
-    TestProtocolEmptyReceiver();
-    TestSealRoundTripAndPolynomial();
-    TestPolynomialLinksDisabledStillRuns();
-    TestPartitioningHandlesX1Collision();
-
-    std::cout << "All UPSICA minimal tests passed.\n";
-    return 0;
+    TestSenderEvaluatorHasNoSecretKey();
+    TestShuffledOprfUsesOneBatchBlind();
+    TestVbfSenderPreparationUsesThreeBinsAndAllSlices();
+    TestVbfPsiCaEncryptedEndToEnd();
+    TestReal128BitElements();
+    std::cout << "All UPSICA VBF+slicing tests passed.\n";
 }

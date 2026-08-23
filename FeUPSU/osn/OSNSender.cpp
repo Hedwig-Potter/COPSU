@@ -17,7 +17,6 @@ std::vector<std::array<osuCrypto::block, 2>> OSNSender::gen_benes_server_osn(int
 	osuCrypto::BitVector switches = benes.return_gen_benes_switches(values);
 
 	std::vector<std::array<osuCrypto::block, 2>> recvMsg(switches.size());
-	std::vector<std::array<osuCrypto::block, 2>> recvCorr(switches.size());
 	Channel& chl = chls[0];
 	if (ot_type == 0)
 	{
@@ -42,6 +41,10 @@ std::vector<std::array<osuCrypto::block, 2>> OSNSender::gen_benes_server_osn(int
 		for (auto i = 0; i < recvMsg.size(); i++)
 			recvMsg[i] = { tmpMsg[i], aes.ecbEncBlock(tmpMsg[i]) };
 	}
+	// Allocate the correction buffer only after random OT generation has
+	// released its temporary messages.  At 2^23 wires each switch-sized buffer
+	// occupies several GiB.
+	std::vector<std::array<osuCrypto::block, 2>> recvCorr(switches.size());
 	chl.recv(recvCorr.data(), recvCorr.size());
 	block temp_msg[2], temp_corr[2];
 	for (int i = 0; i < recvMsg.size(); i++)
@@ -67,14 +70,17 @@ std::vector<oc::block> OSNSender::run_osn(std::vector<oc::Channel>& chls)
 	std::vector<block> input_vec(values);
 	chls[0].recv(input_vec.data(), input_vec.size());
 
+	// A Benes level contains values/2 switches.  The previous values-wide rows
+	// left half of every multi-GiB row unused.
 	std::vector<std::vector<std::array<osuCrypto::block, 2>>> matrix_ot_output(
-		levels, std::vector<std::array<osuCrypto::block, 2>>(values));
+		levels, std::vector<std::array<osuCrypto::block, 2>>(values / 2));
 	int ctr = 0;
 	for (int i = 0; i < levels; ++i)
 	{
 		for (int j = 0; j < values / 2; ++j)
-			matrix_ot_output[i][j] = ot_output[ctr++];
+			matrix_ot_output[i][j] = std::move(ot_output[ctr++]);
 	}
+	std::vector<std::array<osuCrypto::block, 2>>().swap(ot_output);
 
 	benes.gen_benes_masked_evaluate(N, 0, 0, input_vec, matrix_ot_output);
 	return input_vec; //share

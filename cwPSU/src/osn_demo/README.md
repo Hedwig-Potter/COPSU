@@ -1,51 +1,58 @@
-# OSN Demo 示例
+# OSN Demo
 
-本示例演示如何在独立项目中调用 PSU 仓库提供的 `OSNSender` / `OSNReceiver`，完成一次最小的 Oblivious Shuffle Network（permute + share）流程。
+This example shows how to use the repository's `OSNSender` and `OSNReceiver`
+from a standalone program to execute a minimal Oblivious Shuffle Network
+(Permute+Share) protocol.
 
-## 目录结构
+## Contents
 
+```text
+osn_demo/
+├── CMakeLists.txt
+├── main.cpp      # Example implementation
+└── README.md     # Usage guide
 ```
-examples/osn_demo/
-├── main.cpp      # 示例源代码
-└── README.md     # 使用说明
-```
 
-`main.cpp` 完整呈现了：
-1. 构造本地输入集合；
-2. 通过 `Session/Channel` 建立发送方与接收方；
-3. 分别初始化 `OSNSender` 与 `OSNReceiver` 并运行 `run_osn`；
-4. 将双方 share 进行按位异或，校验置换后的结果。
+`main.cpp` demonstrates how to:
 
-## 编译与运行
+1. construct a local input vector;
+2. connect the Sender and Receiver with `Session` and `Channel` objects;
+3. initialize `OSNSender` and `OSNReceiver` and call `run_osn`;
+4. XOR the two output shares and verify the permuted result.
 
-先确保仓库已配置并编译依赖：
+## Build and run
+
+Configure and build the repository and its dependencies first:
 
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --target osn_demo -j 6
+cmake -S src -B build
+cmake --build build --target osn_demo
 ```
 
-默认示例会以集合大小 \(2^4 = 16\)、单线程、IKNP OT (`ot_type=1`) 运行。你可以在 `build` 目录下执行：
+The default run uses (2^4=16) elements, one channel, and IKNP OT
+(`ot_type=1`). Run the executable from the build directory:
 
 ```bash
-./osn_demo            # 使用默认参数
-./osn_demo 10 2       # 集合元素个数 2^10，使用 2 条通道并行
-./osn_demo 10 2 2     # 使用 silent OT，需预先生成缓存
+./osn_demo            # Default parameters
+./osn_demo 10 2       # 2^10 elements and two parallel channels
+./osn_demo 10 2 2     # Silent OT; requires/generated cache data
 ```
 
-若选择 `ot_type=2`（silent OT），程序会在当前目录生成 `osn_demo_cache_*` 前缀的缓存文件；后续运行会自动复用。
+With `ot_type=2`, the program creates cache files whose names start with
+`osn_demo_cache_` in the current directory. Later runs reuse those files.
 
-## 在独立项目中复用
+## Reusing the demo in another project
 
-1. **引入源码**：将 `osn/` 目录以及本示例中的 `main.cpp` 复制到你的项目，并把 `libOTe`/`cryptoTools` 作为依赖加入构建系统。
-2. **编译设置**：
-   - 启用 `-DENABLE_BOOST` 或在源码顶部定义宏；
-   - 在 CMake 中 `add_subdirectory(libOTe)`，然后 `target_link_libraries(<target> osn libOTe cryptoTools)`；
-   - 包含路径需指向 `osn/` 与 `libOTe/out/install/<preset>/include`。
-3. **调用流程**：
-   - 为发送方和接收方各自构建 `IOService`、`Session`、`Channel`；
-   - 调用 `OSNSender::init(size, ot_type, cache_prefix)` 与 `OSNReceiver::init(size, ot_type)`；
-   - 分别执行 `run_osn` 获取 share；
-   - 使用 `sender.dest` 获得随机置换，或直接按元素异或还原。
+1. Copy `osn/` and this example's `main.cpp`, and add libOTe/cryptoTools as
+   build dependencies.
+2. Enable `ENABLE_BOOST`, add libOTe with `add_subdirectory(libOTe)`, and link
+   the target against `osn`, `libOTe`, and `cryptoTools`.
+3. Add include paths for `osn/` and
+   `libOTe/out/install/<preset>/include`.
+4. Construct an `IOService`, `Session`, and `Channel` set for each party.
+5. Call `OSNSender::init(size, ot_type, cache_prefix)` and
+   `OSNReceiver::init(size, ot_type)`, then run both parties to obtain shares.
+6. Use `sender.dest` to inspect the random permutation or XOR corresponding
+   shares to reconstruct the permuted values.
 
-更多细节可参考 `osn_demo/main.cpp` 中的完整实现。
+See `osn_demo/main.cpp` for the complete example.

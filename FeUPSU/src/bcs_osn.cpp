@@ -30,7 +30,7 @@ uint16_t next_local_port() {
 }
 
 osuCrypto::block bit_to_block(uint64_t bit) {
-    return osuCrypto::toBlock(static_cast<osuCrypto::u64>(bit & 1ULL), 0ULL);
+    return osuCrypto::toBlock(0ULL, static_cast<osuCrypto::u64>(bit & 1ULL));
 }
 
 uint64_t block_to_bit(const osuCrypto::block& blk) {
@@ -39,9 +39,80 @@ uint64_t block_to_bit(const osuCrypto::block& blk) {
     return value & 1ULL;
 }
 
+osuCrypto::block word_to_block(uint64_t value) {
+    return osuCrypto::toBlock(0ULL, static_cast<osuCrypto::u64>(value));
+}
+
+uint64_t block_to_word(const osuCrypto::block& blk) {
+    uint64_t value = 0;
+    std::memcpy(&value, &blk, sizeof(uint64_t));
+    return value;
+}
+
 } // namespace
 
 namespace bcs {
+
+PartyShareOutput permute_share_sender(const std::vector<uint32_t>& permutation,
+                                      const std::string& endpoint,
+                                      int ot_type,
+                                      const std::string& cache_base) {
+    if (permutation.empty()) return {};
+    std::vector<int> destinations(permutation.size());
+    for (std::size_t i = 0; i < permutation.size(); ++i) {
+        if (permutation[i] >= permutation.size()) {
+            throw std::invalid_argument("permute_share_sender: invalid permutation");
+        }
+        destinations[i] = static_cast<int>(permutation[i]);
+    }
+
+    osuCrypto::IOService ios;
+    osuCrypto::Session session(ios, endpoint, osuCrypto::EpMode::Server);
+    std::vector<osuCrypto::Channel> channels(1);
+    channels[0] = session.addChannel();
+    OSNSender sender;
+    sender.init(permutation.size(), ot_type, cache_base, &destinations);
+    auto start = std::chrono::steady_clock::now();
+    auto blocks = sender.run_osn(channels);
+    auto end = std::chrono::steady_clock::now();
+
+    PartyShareOutput output;
+    output.compute_ms = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count());
+    output.comm_bytes = channels[0].getTotalDataSent();
+    output.share.resize(blocks.size());
+    std::transform(blocks.begin(), blocks.end(), output.share.begin(), block_to_word);
+    channels[0].close();
+    session.stop();
+    return output;
+}
+
+PartyShareOutput permute_share_receiver(const std::vector<uint64_t>& values,
+                                        const std::string& endpoint,
+                                        int ot_type) {
+    if (values.empty()) return {};
+    osuCrypto::IOService ios;
+    osuCrypto::Session session(ios, endpoint, osuCrypto::EpMode::Client);
+    std::vector<osuCrypto::Channel> channels(1);
+    channels[0] = session.addChannel();
+    OSNReceiver receiver;
+    receiver.init(values.size(), ot_type);
+    std::vector<osuCrypto::block> inputs(values.size());
+    std::transform(values.begin(), values.end(), inputs.begin(), word_to_block);
+    auto start = std::chrono::steady_clock::now();
+    auto blocks = receiver.run_osn(inputs, channels);
+    auto end = std::chrono::steady_clock::now();
+
+    PartyShareOutput output;
+    output.compute_ms = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count());
+    output.comm_bytes = channels[0].getTotalDataSent();
+    output.share.resize(blocks.size());
+    std::transform(blocks.begin(), blocks.end(), output.share.begin(), block_to_word);
+    channels[0].close();
+    session.stop();
+    return output;
+}
 
 PermuteShareOutput permute_share_bits(const std::vector<uint64_t>& bits,
                                       const std::vector<uint32_t>& permutation,

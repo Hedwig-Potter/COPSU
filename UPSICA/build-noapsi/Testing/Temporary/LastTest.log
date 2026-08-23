@@ -1,0 +1,19 @@
+Start testing: Aug 19 14:37 CST
+----------------------------------------------------------
+1/1 Testing: upsica_unit_tests
+1/1 Test: upsica_unit_tests
+Command: "/home/jrj/code/UPSICA/build-noapsi/upsica_unit_tests"
+Directory: /home/jrj/code/UPSICA/build-noapsi
+"upsica_unit_tests" start time: Aug 19 14:37 CST
+Output:
+----------------------------------------------------------
+All UPSICA VBF+slicing tests passed.
+<end of output>
+Test time =   0.19 sec
+----------------------------------------------------------
+Test Passed.
+"upsica_unit_tests" end time: Aug 19 14:37 CST
+"upsica_unit_tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Aug 19 14:37 CST

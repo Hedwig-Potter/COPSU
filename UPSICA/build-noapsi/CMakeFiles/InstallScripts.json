@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/jrj/code/UPSICA/build-noapsi/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

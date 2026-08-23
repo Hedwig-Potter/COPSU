@@ -77,6 +77,21 @@ BN_ptr BytesToBN(const std::vector<uint8_t>& bytes) {
     return BN_ptr(raw, BN_free);
 }
 
+template <typename T>
+void SecureShuffle(std::vector<T>& values) {
+    for (size_t remaining = values.size(); remaining > 1; --remaining) {
+        uint64_t random_value = 0;
+        const uint64_t limit = UINT64_MAX - (UINT64_MAX % remaining);
+        do {
+            if (RAND_bytes(reinterpret_cast<unsigned char*>(&random_value),
+                           sizeof(random_value)) != 1) {
+                throw std::runtime_error("failed to sample secret permutation");
+            }
+        } while (random_value >= limit);
+        std::swap(values[remaining - 1], values[random_value % remaining]);
+    }
+}
+
 }  // namespace
 
 ShuffledDhOprf::ShuffledDhOprf(OprfConfig config) : config_(std::move(config)) {}
@@ -113,11 +128,33 @@ OprfKeypair ShuffledDhOprf::GenerateKeypair() {
 }
 
 OprfMessage ShuffledDhOprf::Blind(const std::vector<uint8_t>& element, std::vector<uint8_t>& blind_factor) const {
+    blind_factor = GenerateBlindFactor();
+    return BlindWithFactor(element, blind_factor);
+}
+
+std::vector<uint8_t> ShuffledDhOprf::GenerateBlindFactor() const {
     EC_GROUP_ptr group(EC_GROUP_new_by_curve_name(NID_X9_62_prime256v1), EC_GROUP_free);
     BN_CTX_ptr bn_ctx(BN_CTX_new(), BN_CTX_free);
     BN_ptr order(BN_new(), BN_free);
     if (!group || !bn_ctx || !order || !EC_GROUP_get_order(group.get(), order.get(), bn_ctx.get())) {
-        throw std::runtime_error("failed to init EC params in Blind");
+        throw std::runtime_error("failed to init EC params in GenerateBlindFactor");
+    }
+    BN_ptr beta(BN_new(), BN_free);
+    do {
+        if (!BN_rand_range(beta.get(), order.get())) {
+            throw std::runtime_error("failed to sample blind factor");
+        }
+    } while (BN_is_zero(beta.get()));
+    return BNToBytes(beta.get(), 32);
+}
+
+OprfMessage ShuffledDhOprf::BlindWithFactor(const std::vector<uint8_t>& element,
+                                            const std::vector<uint8_t>& blind_factor) const {
+    EC_GROUP_ptr group(EC_GROUP_new_by_curve_name(NID_X9_62_prime256v1), EC_GROUP_free);
+    BN_CTX_ptr bn_ctx(BN_CTX_new(), BN_CTX_free);
+    BN_ptr order(BN_new(), BN_free);
+    if (!group || !bn_ctx || !order || !EC_GROUP_get_order(group.get(), order.get(), bn_ctx.get())) {
+        throw std::runtime_error("failed to init EC params in BlindWithFactor");
     }
 
     auto digest = Sha256(element);
@@ -127,24 +164,31 @@ OprfMessage ShuffledDhOprf::Blind(const std::vector<uint8_t>& element, std::vect
         BN_one(h_scalar.get());
     }
 
+    BN_ptr beta = BytesToBN(blind_factor);
+    BN_mod(beta.get(), beta.get(), order.get(), bn_ctx.get());
+    if (BN_is_zero(beta.get())) {
+        throw std::runtime_error("invalid blind factor");
+    }
+
     EC_POINT_ptr h_point(EC_POINT_new(group.get()), EC_POINT_free);
     EC_POINT_mul(group.get(), h_point.get(), h_scalar.get(), nullptr, nullptr, bn_ctx.get());
-
-    BN_ptr beta(BN_new(), BN_free);
-    do {
-        if (!BN_rand_range(beta.get(), order.get())) {
-            throw std::runtime_error("failed to sample blind factor");
-        }
-    } while (BN_is_zero(beta.get()));
 
     EC_POINT_ptr blinded(EC_POINT_new(group.get()), EC_POINT_free);
     EC_POINT_mul(group.get(), blinded.get(), nullptr, h_point.get(), beta.get(), bn_ctx.get());
 
-    blind_factor = BNToBytes(beta.get(), 32);
     size_t out_len = EC_POINT_point2oct(group.get(), blinded.get(), POINT_CONVERSION_COMPRESSED, nullptr, 0, bn_ctx.get());
     std::vector<uint8_t> payload(out_len);
     EC_POINT_point2oct(group.get(), blinded.get(), POINT_CONVERSION_COMPRESSED, payload.data(), payload.size(), bn_ctx.get());
     return {payload};
+}
+
+std::vector<OprfMessage> ShuffledDhOprf::EvaluateBatchShuffled(
+    const std::vector<OprfMessage>& blinded_batch) const {
+    std::vector<OprfMessage> evaluated;
+    evaluated.reserve(blinded_batch.size());
+    for (const auto& message : blinded_batch) evaluated.push_back(Evaluate(message));
+    SecureShuffle(evaluated);
+    return evaluated;
 }
 
 OprfMessage ShuffledDhOprf::Evaluate(const OprfMessage& blinded) const {
@@ -175,27 +219,35 @@ OprfMessage ShuffledDhOprf::Evaluate(const OprfMessage& blinded) const {
     return {payload};
 }
 
-std::vector<OprfMessage> ShuffledDhOprf::EvaluateBatchShuffled(const std::vector<OprfMessage>& blinded_batch,
-                                                               std::vector<size_t>& permutation) const {
-    std::vector<OprfMessage> evaluated;
-    evaluated.reserve(blinded_batch.size());
-    for (const auto& msg : blinded_batch) {
-        evaluated.push_back(Evaluate(msg));
+std::vector<uint8_t> ShuffledDhOprf::EvaluateInput(const std::vector<uint8_t>& element) const {
+    if (secret_key_hex_.empty()) {
+        throw std::runtime_error("sender key is not initialized");
+    }
+    EC_GROUP_ptr group(EC_GROUP_new_by_curve_name(NID_X9_62_prime256v1), EC_GROUP_free);
+    BN_CTX_ptr bn_ctx(BN_CTX_new(), BN_CTX_free);
+    BN_ptr order(BN_new(), BN_free);
+    if (!group || !bn_ctx || !order || !EC_GROUP_get_order(group.get(), order.get(), bn_ctx.get())) {
+        throw std::runtime_error("failed to init EC params in EvaluateInput");
     }
 
-    permutation.resize(blinded_batch.size());
-    for (size_t i = 0; i < permutation.size(); ++i) {
-        permutation[i] = i;
-    }
-    std::mt19937_64 rng(static_cast<uint64_t>(std::random_device{}()));
-    std::shuffle(permutation.begin(), permutation.end(), rng);
+    auto digest = Sha256(element);
+    BN_ptr h_scalar = BytesToBN(digest);
+    BN_mod(h_scalar.get(), h_scalar.get(), order.get(), bn_ctx.get());
+    if (BN_is_zero(h_scalar.get())) BN_one(h_scalar.get());
+    BN_ptr sk = BytesToBN(HexToBytes(secret_key_hex_));
 
-    std::vector<OprfMessage> shuffled;
-    shuffled.reserve(evaluated.size());
-    for (size_t idx : permutation) {
-        shuffled.push_back(evaluated[idx]);
+    EC_POINT_ptr point(EC_POINT_new(group.get()), EC_POINT_free);
+    if (!point || !EC_POINT_mul(group.get(), point.get(), nullptr,
+                                EC_GROUP_get0_generator(group.get()), h_scalar.get(), bn_ctx.get()) ||
+        !EC_POINT_mul(group.get(), point.get(), nullptr, point.get(), sk.get(), bn_ctx.get())) {
+        throw std::runtime_error("failed to evaluate sender OPRF input");
     }
-    return shuffled;
+    size_t len = EC_POINT_point2oct(group.get(), point.get(), POINT_CONVERSION_COMPRESSED,
+                                    nullptr, 0, bn_ctx.get());
+    std::vector<uint8_t> encoded(len);
+    EC_POINT_point2oct(group.get(), point.get(), POINT_CONVERSION_COMPRESSED,
+                       encoded.data(), encoded.size(), bn_ctx.get());
+    return Sha256(encoded);
 }
 
 std::vector<uint8_t> ShuffledDhOprf::Unblind(const OprfMessage& evaluated,

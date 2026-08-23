@@ -50,13 +50,13 @@ for cfg in "${CONFIGS[@]}"; do
           --hamming_weight "$HW"
 
         if ! compgen -G "$PATTERN" >/dev/null; then
-          echo "[WARN] 未生成 bitlength_*hw_${HW}_* 结果文件" >&2
+          echo "[WARN] No bitlength_*hw_${HW}_* result file was generated" >&2
           continue
         fi
 
         latest_after=$(ls -1t -- $PATTERN | head -n 1)
         if [ -n "$latest_before" ] && [ "$latest_after" = "$latest_before" ]; then
-          echo "[WARN] 未检测到新的结果文件 (仍为 ${latest_after##*/})" >&2
+          echo "[WARN] No new result file was detected (still ${latest_after##*/})" >&2
           continue
         fi
 
@@ -68,7 +68,7 @@ for cfg in "${CONFIGS[@]}"; do
           target_path="$new_path"
         fi
 
-        echo "保存结果: ${target_path##*/}"
+        echo "Saved result: ${target_path##*/}"
       done
     done
 
@@ -77,4 +77,4 @@ for cfg in "${CONFIGS[@]}"; do
 
 done
 
-echo "全部实验完成。结果保存在 $RESULTS_DIR"
+echo "All experiments completed. Results are stored in $RESULTS_DIR"

@@ -1,0 +1,12 @@
+# ninja log v5
+0	816	1787121417565759680	CMakeFiles/upsica_core.dir/src/CryptoPrimitives/dh_oprf.cpp.o	9f0c115f834fe0a0
+817	1085	1787121417833761809	CMakeFiles/upsica_core.dir/src/DataStructure/vbf.cpp.o	4ac5a0a8b350568d
+1085	1328	1787121418077763747	CMakeFiles/upsica_core.dir/src/DataStructure/hashing.cpp.o	a21ed928bdbc848e
+1328	1875	1787121418625768100	CMakeFiles/upsica_core.dir/src/DataStructure/polynomial_links.cpp.o	ebd11705ab895c00
+1	3044	1787121419793777377	CMakeFiles/upsica_core.dir/src/CryptoPrimitives/fhe_wrapper.cpp.o	b4cbaea69d2f9c9
+1875	4738	1787121421485790812	CMakeFiles/upsica_core.dir/src/Protocol/vbf_psi_ca.cpp.o	102658c242f5b661
+4738	4757	1787121421505790971	libupsica_core.a	e52a295b14baa841
+3045	5948	1787121422697800433	CMakeFiles/upsica-vbf.dir/src/vbf_network_main.cpp.o	852f5924d4fe0f
+5949	6064	1787121422813801354	upsica-vbf	f112a886041a6829
+4757	6542	1787121423289805133	CMakeFiles/upsica_unit_tests.dir/tests/protocol_minimal_test.cpp.o	e12b171654d1c92a
+6542	6658	1787121423405806054	upsica_unit_tests	b812447ff8caddad

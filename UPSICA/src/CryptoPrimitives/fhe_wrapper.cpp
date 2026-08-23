@@ -26,6 +26,25 @@ std::vector<uint8_t> SerializeCiphertext(
 #endif
 }
 
+#if UPSICA_ENABLE_SEAL
+template <typename SealObject>
+std::vector<uint8_t> SerializeSealObject(const SealObject& object) {
+    std::stringstream ss(std::ios::in | std::ios::out | std::ios::binary);
+    object.save(ss);
+    const auto buffer = ss.str();
+    return {buffer.begin(), buffer.end()};
+}
+
+template <typename SealObject>
+void LoadSealObject(const std::vector<uint8_t>& bytes,
+                    const seal::SEALContext& context,
+                    SealObject& object) {
+    std::string buffer(bytes.begin(), bytes.end());
+    std::stringstream ss(buffer, std::ios::in | std::ios::binary);
+    object.load(context, ss);
+}
+#endif
+
 }  // namespace
 
 FheWrapper::FheWrapper(FheParams params) : params_(params) {}
@@ -55,8 +74,47 @@ void FheWrapper::Initialize() {
 
     slot_count_ = encoder_->slot_count();
     initialized_ = true;
+    can_decrypt_ = true;
 #else
     initialized_ = true;
+#endif
+}
+
+void FheWrapper::InitializeEvaluator(const FheEvaluationKeys& keys) {
+#if UPSICA_ENABLE_SEAL
+    seal::EncryptionParameters parms(seal::scheme_type::bfv);
+    parms.set_poly_modulus_degree(params_.poly_modulus_degree);
+    parms.set_coeff_modulus(seal::CoeffModulus::BFVDefault(params_.poly_modulus_degree));
+    parms.set_plain_modulus(
+        seal::PlainModulus::Batching(params_.poly_modulus_degree, params_.plain_modulus_bits));
+    context_ = std::make_shared<seal::SEALContext>(parms);
+    if (!context_ || !context_->parameters_set()) {
+        throw std::runtime_error("SEAL evaluator context initialization failed");
+    }
+    LoadSealObject(keys.public_key, *context_, public_key_);
+    LoadSealObject(keys.relin_keys, *context_, relin_keys_);
+    encoder_ = std::make_unique<seal::BatchEncoder>(*context_);
+    encryptor_ = std::make_unique<seal::Encryptor>(*context_, public_key_);
+    evaluator_ = std::make_unique<seal::Evaluator>(*context_);
+    decryptor_.reset();
+    slot_count_ = encoder_->slot_count();
+    initialized_ = true;
+    can_decrypt_ = false;
+#else
+    (void)keys;
+    initialized_ = true;
+    can_decrypt_ = false;
+#endif
+}
+
+FheEvaluationKeys FheWrapper::ExportEvaluationKeys() const {
+#if UPSICA_ENABLE_SEAL
+    if (!initialized_ || !can_decrypt_) {
+        throw std::runtime_error("evaluation keys can only be exported by the receiver context");
+    }
+    return {SerializeSealObject(public_key_), SerializeSealObject(relin_keys_)};
+#else
+    return {};
 #endif
 }
 
@@ -87,7 +145,7 @@ Ciphertext FheWrapper::Encrypt(const Plaintext& pt) const {
 
 Plaintext FheWrapper::Decrypt(const Ciphertext& ct) const {
 #if UPSICA_ENABLE_SEAL
-    if (!initialized_) {
+    if (!initialized_ || !can_decrypt_ || !decryptor_) {
         throw std::runtime_error("FheWrapper::Initialize must be called before Decrypt");
     }
 

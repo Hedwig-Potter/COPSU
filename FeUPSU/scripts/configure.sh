@@ -6,10 +6,10 @@ VCPKG_ROOT="/home/jrj/code/vcpkg"
 
 usage() {
   cat <<'EOF'
-用法: scripts/configure.sh [--type Release|Debug|RelWithDebInfo|MinSizeRel]
-示例: scripts/configure.sh --type Release
+Usage: scripts/configure.sh [--type Release|Debug|RelWithDebInfo|MinSizeRel]
+Example: scripts/configure.sh --type Release
 
-不指定 --type 时默认使用 CMake 默认的 Debug。
+When --type is omitted, CMake defaults to Debug.
 EOF
   exit 0
 }
@@ -21,7 +21,7 @@ while (($#)); do
   case "$1" in
     --type)
       if (($# < 2)); then
-        echo "--type 需要一个参数" >&2
+        echo "--type requires an argument" >&2
         exit 1
       fi
       BUILD_TYPE="$2"
@@ -31,7 +31,7 @@ while (($#)); do
       usage
       ;;
     *)
-      echo "未知参数: $1" >&2
+      echo "Unknown argument: $1" >&2
       exit 1
       ;;
   esac

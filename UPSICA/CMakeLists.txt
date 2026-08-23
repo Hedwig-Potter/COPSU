@@ -10,13 +10,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(UPSICA_ENABLE_SEAL "Enable Microsoft SEAL integration" OFF)
-option(UPSICA_ENABLE_APSI "Enable APSI integration" OFF)
+option(UPSICA_ENABLE_APSI "Build the optional, unused bundled APSI library" OFF)
 set(UPSICA_APSI_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/APSI-main" CACHE PATH "Path to APSI source tree")
-
-# Enable by default when local APSI source exists.
-if(EXISTS "${UPSICA_APSI_SOURCE_DIR}/CMakeLists.txt")
-  set(UPSICA_ENABLE_APSI ON CACHE BOOL "Enable APSI integration" FORCE)
-endif()
 set(UPSICA_ENABLE_SEAL ON CACHE BOOL "Enable Microsoft SEAL integration" FORCE)
 
 if(UPSICA_ENABLE_SEAL)
@@ -59,8 +54,7 @@ add_library(upsica_core
   src/DataStructure/vbf.cpp
   src/DataStructure/hashing.cpp
   src/DataStructure/polynomial_links.cpp
-  src/Protocol/preparation_phase.cpp
-  src/Protocol/online_phase.cpp
+  src/Protocol/vbf_psi_ca.cpp
 )
 
 target_include_directories(upsica_core
@@ -84,8 +78,8 @@ if(UPSICA_ENABLE_APSI)
   target_link_libraries(upsica_core PUBLIC apsi)
 endif()
 
-add_executable(upsica_cli src/main.cpp)
-target_link_libraries(upsica_cli PRIVATE upsica_core)
+add_executable(upsica-vbf src/vbf_network_main.cpp)
+target_link_libraries(upsica-vbf PRIVATE upsica_core)
 
 if(BUILD_TESTING)
   add_executable(upsica_unit_tests tests/protocol_minimal_test.cpp)
@@ -93,7 +87,7 @@ if(BUILD_TESTING)
   add_test(NAME upsica_unit_tests COMMAND upsica_unit_tests)
 endif()
 
-install(TARGETS upsica_core upsica_cli
+install(TARGETS upsica_core upsica-vbf
   RUNTIME DESTINATION bin
   LIBRARY DESTINATION lib
   ARCHIVE DESTINATION lib

@@ -9,19 +9,31 @@ profiles=("lan" "wan-100" "wan-10" "wan-1")
 profile_labels=("lan" "wan-100Mbps" "wan-10Mbps" "wan-1Mbps")
 
 workloads=(
-  "32 7 $((1<<18))"
-  "32 7 $((1<<20))"
-  "32 7 $((1<<22))"
-  "32 8 $((1<<18))"
-  "32 8 $((1<<20))"
-  "32 8 $((1<<22))"
-  "128 31 $((1<<18))"
-  "128 31 $((1<<20))"
-  "128 31 $((1<<22))"
-  "128 32 $((1<<18))"
-  "128 32 $((1<<20))"
-  "128 32 $((1<<22))"
+  # original_bits effective_lambda hw server_set
+  # 32-bit: effective_lambda = 32 - log2(N) = 32 - 13 = 19.
+  "32 19 6 $((1<<18))"
+  "32 19 6 $((1<<20))"
+  "32 19 6 $((1<<22))"
+  # 128-bit: effective_lambda = 40 + ceil(log2(mu)); for N=16384,
+  # mu is 100, 296 and 976 for the three server-set sizes below.
+  "128 47 14 $((1<<18))"
+  "128 49 15 $((1<<20))"
+  "128 50 15 $((1<<22))"
 )
+
+log_poly_modulus_degree_for_hw() {
+  local hw="$1"
+  if [ "$hw" -le 1 ]; then
+    echo 12
+  elif [ "$hw" -le 8 ]; then
+    echo 13
+  elif [ "$hw" -le 64 ]; then
+    echo 14
+  else
+    echo "unsupported hw: $hw" >&2
+    return 1
+  fi
+}
 
 results_dir="$ROOT/results"
 mkdir -p "$results_dir"
@@ -29,7 +41,7 @@ mkdir -p "$results_dir"
 SUDO_KEEPALIVE_PID=""
 if [ "$(id -u)" -ne 0 ]; then
   if command -v sudo >/dev/null 2>&1; then
-    echo "[INFO] 预热 sudo 权限用于 tc 配置..." >&2
+    echo "[INFO] Warming the sudo credential cache for tc configuration..." >&2
     sudo -v
     (while true; do sleep 60; sudo -n true; done) &
     SUDO_KEEPALIVE_PID=$!
@@ -52,8 +64,10 @@ for idx in "${!profiles[@]}"; do
   label="${profile_labels[$idx]}"
 
   for workload in "${workloads[@]}"; do
-    read -r effective_lambda hw server_set <<<"$workload"
-    echo "=== $profile | server_set=$server_set | effective_lambda=$effective_lambda | hw=$hw ==="
+    read -r original_bitlength effective_lambda hw server_set <<<"$workload"
+    log_poly_modulus_degree="$(log_poly_modulus_degree_for_hw "$hw")"
+    client_set="$((1 << log_poly_modulus_degree))"
+    echo "=== $profile | original_bitlength=$original_bitlength | server_set=$server_set | effective_lambda=$effective_lambda | hw=$hw | logN=$log_poly_modulus_degree | client_set=$client_set ==="
 
     before_latest=""
     if compgen -G "$results_dir"/*.csv >/dev/null; then
@@ -65,24 +79,25 @@ for idx in "${!profiles[@]}"; do
       --iface "${NETEM_IFACE:-lo}" \
       -- \
       --server_set "$server_set" \
+      --client_set "$client_set" \
       --effective_bitlength "$effective_lambda" \
       --hamming_weight "$hw"; then
-      echo "[WARN] 运行失败，跳过该组合" >&2
+      echo "[WARN] Run failed; skipping this configuration" >&2
       continue
     fi
 
     if ! compgen -G "$results_dir"/*.csv >/dev/null; then
-      echo "[WARN] 未生成结果文件" >&2
+      echo "[WARN] No result file was generated" >&2
       continue
     fi
 
     latest_file=$(ls -1t "$results_dir"/*.csv | head -n 1 || true)
     if [ -z "${latest_file:-}" ] || [ ! -f "$latest_file" ]; then
-      echo "[WARN] 未找到最新结果文件" >&2
+      echo "[WARN] No latest result file was found" >&2
       continue
     fi
     if [ "$latest_file" = "$before_latest" ]; then
-      echo "[WARN] 未检测到新的结果文件" >&2
+      echo "[WARN] No new result file was detected" >&2
       continue
     fi
 
@@ -97,9 +112,9 @@ for idx in "${!profiles[@]}"; do
     done
 
     if mv "$latest_file" "$renamed_file"; then
-      echo "    -> 结果存为 $renamed_file"
+      echo "    -> Result saved to $renamed_file"
     else
-      echo "[WARN] 重命名失败，保留原文件: $latest_file" >&2
+      echo "[WARN] Rename failed; keeping the original file: $latest_file" >&2
     fi
   done
   echo

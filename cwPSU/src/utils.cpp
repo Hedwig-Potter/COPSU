@@ -16,7 +16,6 @@
 using namespace std;
 using namespace seal;
 
-// --- Timer 类实现 ---
 Timer::Timer(){
     start_ = chrono::steady_clock::now();
     end_ = chrono::steady_clock::now();
@@ -41,7 +40,6 @@ long double Timer::get_time_in_milliseconds(){
     return elapsed.count();
 }
 
-// 计算 log2(n choose k)
 float log2_choose(uint64_t n, uint64_t k) {
     if (k > n) {
         return 0;
@@ -53,41 +51,45 @@ float log2_choose(uint64_t n, uint64_t k) {
     return r;
 }
 
-// 计算 n choose k
-uint64_t choose(uint64_t n, uint64_t k) {
+// Saturate at 2^64. The fixed-weight code space may be 128 bits, while the
+// element rank is uint64_t; values above this threshold must not wrap around.
+unsigned __int128 choose(uint64_t n, uint64_t k) {
     if (k > n) {
         return 0;
     }
-    uint64_t r = 1;
+    constexpr unsigned __int128 limit = static_cast<unsigned __int128>(UINT64_MAX) + 1;
+    unsigned __int128 r = 1;
     for (uint64_t d = 1; d <= k; ++d) {
         r *= n--;
         r /= d;
+        if (r >= limit) return limit;
     }
     return r;
 }
 
-// 生成定重码 (Constant-Weight Code) 的实现
 vector<uint64_t> get_cw(uint64_t __number, uint64_t encoding_size, uint64_t hamming_weight, bool __verbose){
     vector<uint64_t> ans(encoding_size, 0ULL);
-    uint64_t mod_size = choose(encoding_size, hamming_weight);
-    if (__number >= mod_size){
+    unsigned __int128 mod_size = choose(encoding_size, hamming_weight);
+    unsigned __int128 rank = __number;
+    if (rank >= mod_size){
         if (__verbose){
             cout << "Overflow occurred, everything okay?" << endl;
-            cout << __number << " " << mod_size << endl;
+            cout << __number << " code-space-too-small" << endl;
         }
-        __number %= mod_size;
+        rank %= mod_size;
     }
-    long remainder = __number, k_prime = hamming_weight;
+    unsigned __int128 remainder = rank;
+    uint64_t k_prime = hamming_weight;
     for (long pointer=encoding_size-1; pointer>=0; pointer--){
         if (remainder >= choose(pointer, k_prime)){
             ans[pointer] = 1ULL;
             remainder -= choose(pointer, k_prime);
             k_prime -= 1;
+            if (k_prime == 0) break;
         }
     }
     return ans;
 }
-//新增开始
 namespace {
 uint64_t mod_add(uint64_t a, uint64_t b, uint64_t mod){
     uint64_t res = a + b;
@@ -172,9 +174,6 @@ EEQParams build_eeq_params(uint64_t hw, uint64_t plain_modulus){
     params.coefficients = build_equality_polynomial(hw, plain_modulus);
     return params;
 }
-//新增结束
-// --- Params 类实现 ---
-// 构造函数，根据用户输入的核心参数，自动推导和设置同态加密所需的参数
 Params::Params()
         : log_poly_modulus_degree(0),
             prime_bitlength(0),
@@ -183,9 +182,11 @@ Params::Params()
             effective_lambda(0),
             hw(0),
             ell(0),
-            server_set(0) {}
+            server_set(0),
+            client_set(0),
+            client_bin_offset(0) {}
 
-Params::Params(Task task, uint64_t server_set, uint64_t effective_lambda, uint64_t hw){
+Params::Params(Task task, uint64_t server_set, uint64_t effective_lambda, uint64_t hw, uint64_t client_set){
 
     this->task = task;
     // this->mu = mu;
@@ -193,16 +194,14 @@ Params::Params(Task task, uint64_t server_set, uint64_t effective_lambda, uint64
     this->effective_lambda = effective_lambda;
     this->server_set = server_set;
     this->hw = hw;
+    this->client_set = client_set;
+    this->client_bin_offset = 0;
 
-    // 计算定重码的码长 (ell)，使得 C(ell, hw) >= 2^effective_lambda
     this->ell = hw;
     while (log2_choose(this->ell, this->hw) < this->effective_lambda){
         this->ell++;
     }
 
-    // 根据汉明权重 hw，为 BFV 同态加密方案选择合适的加密参数。
-    // 不同的 hw 会影响密文计算的深度，从而需要不同的多项式模度数 (poly_modulus_degree) 和系数模数 (coeff_bits)。
-    // 这是一个关键的优化步骤，以确保计算的正确性和效率。
     if (hw <= 1){ // q=72
         log_poly_modulus_degree = 12;
         coeff_bits = CoeffModulus::Create(1 << log_poly_modulus_degree, {36,36});
@@ -214,9 +213,9 @@ Params::Params(Task task, uint64_t server_set, uint64_t effective_lambda, uint64
         // previously {48,36,36,48} -> total ~168 bits
         // increase to {60,48,48,60} -> total ~216 bits to allow deeper multiplications
         coeff_bits = CoeffModulus::Create(1 << log_poly_modulus_degree, {60,48,48,60});
-    } else if(hw <= 8){ // q=48*2+36*3=204
+    } else if(hw <= 8){ // q=55*2+36*3=218 (SEAL's N=8192 security limit)
         log_poly_modulus_degree = 13;
-        coeff_bits = CoeffModulus::Create(1 << log_poly_modulus_degree, {48,36,36,36,48});
+        coeff_bits = CoeffModulus::Create(1 << log_poly_modulus_degree, {55,36,36,36,55});
     } else if(hw <= 16){ // q=48*2+36*4=240
         log_poly_modulus_degree = 14;
         coeff_bits = CoeffModulus::Create(1 << log_poly_modulus_degree, {48,36,36,36,36,48});
@@ -234,14 +233,16 @@ Params::Params(Task task, uint64_t server_set, uint64_t effective_lambda, uint64
     uint64_t mu = ceil((float)num_balls / num_bins + 2 * sqrt((float)num_balls * log2(num_bins) / num_bins));
     this->mu = mu;
 
-    // 设置明文模数的位长，若当前位长找不到满足 batching 要求的素数，则逐步上调
-    uint64_t min_bits = effective_lambda < 2 ? 2 : effective_lambda;
+    // effective_lambda describes the encoded element domain, not the BFV
+    // plaintext modulus. Elements are already constant-weight encoded and the
+    // final raw values are split into base-p digits, so a 20-bit batching prime
+    // is sufficient and matches the FeUPSU comparison configuration.
+    uint64_t min_bits = 20;
     auto try_pick = [&](uint64_t bits) -> bool {
         if (bits < 2 || bits > 60) return false;
         try {
             auto modulus_candidate = PlainModulus::Batching(1 << log_poly_modulus_degree, static_cast<int>(bits));
             this->prime_bitlength = static_cast<uint64_t>(bits);
-            // 如果 Batching 成功, 记录真实 bit_count 以便客户端再次调用时使用
             if (modulus_candidate.bit_count() != static_cast<int>(bits)) {
                 this->prime_bitlength = modulus_candidate.bit_count();
             }

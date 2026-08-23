@@ -1,2 +1,0 @@
-/home/jrj/code/UPSICA/build/apsi-build/CMakeFiles/CheckASM/CMakeFiles/edit_cache.dir
-/home/jrj/code/UPSICA/build/apsi-build/CMakeFiles/CheckASM/CMakeFiles/rebuild_cache.dir

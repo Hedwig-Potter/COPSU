@@ -15,7 +15,7 @@ int main(int argc, char* argv[]) {
     // Defaults; adjust as needed for cwPSU
     uint64_t effective_bitlength = 32;
     uint64_t hw = 7;
-    uint64_t client_set = 1024;
+    uint64_t client_set = 0;
     uint64_t server_set = 1 << 20;
     // uint64_t N = 8192;
     // uint64_t mu = 1;
@@ -60,7 +60,7 @@ int main(int argc, char* argv[]) {
                     else if (task_str == "PSUCardinality") task = PSUCardinality;
                     else if (task_str == "circuitPSU") task = circuitPSU;
                     else {
-                        cerr << "[WARN] 未识别的任务类型 '" << task_str << "'，保持默认 PSU" << endl;
+                        cerr << "[WARN] Unrecognized task '" << task_str << "'，keeping the default PSU" << endl;
                         task = PSU;
                     }
                 }
@@ -72,7 +72,7 @@ int main(int argc, char* argv[]) {
 
     
     cout << "--- cwPSU Specs ---" << endl;
-    cout << "Client set size: " << client_set << endl;
+    cout << "Client set size: " << (client_set == 0 ? string("default bin_count") : to_string(client_set)) << endl;
     cout << "Server set size: " << server_set << endl;
     cout << "Effective bitlength: " << effective_bitlength << endl;
     cout << "Hamming weight: " << hw << endl;
@@ -80,6 +80,6 @@ int main(int argc, char* argv[]) {
     Server* server = new Server();
     Client client(server);
 
-    Params params(task, server_set, effective_bitlength, hw);
+    Params params(task, server_set, effective_bitlength, hw, client_set);
     client.run_protocol(params);
 }

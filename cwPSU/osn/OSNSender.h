@@ -20,12 +20,13 @@ class OSNSender
 	void rand_ot_recv(osuCrypto::BitVector& choices,
 		std::vector<osuCrypto::block>& recvMsg,
 		std::vector<oc::Channel>& chls);
-	std::vector<std::array<osuCrypto::block, 2>> gen_benes_server_osn(int values, std::vector<oc::Channel>& chls);
+	std::vector<std::array<osuCrypto::block, 2>> gen_benes_server_osn(int values, std::vector<oc::Channel>& chls,
+		uint64_t modulus = 0);
  public:
 	std::vector<int> dest;
 	OSNSender(size_t size = 0, int ot_type = 0);
 	void init(size_t size, int ot_type = 0, const std::string& osn_cache = "", const std::vector<int>* dest_override = nullptr);
 	std::vector<oc::block> run_osn(std::vector<oc::Channel>& chls);
+	std::vector<oc::block> run_osn_arithmetic(std::vector<oc::Channel>& chls, uint64_t modulus);
 	void setTimer(oc::Timer& timer);
 };
-

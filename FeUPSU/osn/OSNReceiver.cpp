@@ -153,6 +153,9 @@ std::vector<std::vector<block>> OSNReceiver::gen_benes_client_osn(int values, st
 	cpus.store(chls.size());
 	std::vector<std::array<osuCrypto::block, 2>> correction_blocks(switches);
 	prepare_correction(N, values, 0, 0, masks, ot_messages, correction_blocks);
+	// prepare_correction is the final consumer of the four-block OT messages;
+	// release them before the multi-GiB correction payload is queued for send.
+	std::vector<std::array<std::array<osuCrypto::block, 2>, 2>>().swap(ot_messages);
 	chl.send(correction_blocks);
 	for (int i = 0; i < values; ++i)
 	{

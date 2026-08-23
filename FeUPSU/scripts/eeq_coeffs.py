@@ -1,8 +1,8 @@
-"""生成 EEQ 多项式系数，便于嵌入 C++ 实现。
+"""Generate EEQ polynomial coefficients for embedding in C++.
 
-算法思路：直接构造
+The algorithm directly constructs
     f_h(k) = prod_{i=0}^{h-1} (k - i) / h!
-它满足 f_h(k) = 0 (0 <= k < h)，且 f_h(h) = 1。
+so that f_h(k) = 0 for 0 <= k < h and f_h(h) = 1.
 """
 
 from __future__ import annotations
@@ -13,9 +13,8 @@ from math import factorial
 
 
 def equality_poly_coeffs(h: int) -> list[Fraction]:
-    coeffs = [Fraction(1)]  # 初始多项式 1
+    coeffs = [Fraction(1)]
     for i in range(h):
-        # 乘以 (k - i)
         next_coeffs = [Fraction(0)] * (len(coeffs) + 1)
         for power, coef in enumerate(coeffs):
             next_coeffs[power] -= coef * i

@@ -37,20 +37,20 @@ for profile in "${profiles[@]}"; do
         --hamming_weight "$hw"
 
       if ! compgen -G "$results_dir"/*.csv >/dev/null; then
-        echo "[WARN] 未生成结果文件" >&2
+        echo "[WARN] No result file was generated" >&2
         continue
       fi
 
       latest_file=$(ls -1t "$results_dir"/*.csv | head -n 1)
       if [ "$latest_file" = "$before_latest" ]; then
-        echo "[WARN] 未检测到新的结果文件" >&2
+        echo "[WARN] No new result file was detected" >&2
         continue
       fi
 
       base_name="$(basename "$latest_file" .csv)"
       renamed_file="$results_dir/${base_name}__${profile}.csv"
       mv "$latest_file" "$renamed_file"
-      echo "    -> 结果存为 $renamed_file"
+      echo "    -> Result saved to $renamed_file"
     done
   done
 done

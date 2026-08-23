@@ -30,7 +30,8 @@ public:
 	void gen_benes_eval(int n, int lvl_p, int perm_idx, std::vector<oc::block>& src);
 
 	void gen_benes_masked_evaluate(int n, int lvl_p, int perm_idx, std::vector<oc::block>& src,
-		std::vector<std::vector<std::array<osuCrypto::block, 2>>>& ot_output);
+		std::vector<std::vector<std::array<osuCrypto::block, 2>>>& ot_output,
+		uint64_t modulus = 0);
 
 	osuCrypto::BitVector return_gen_benes_switches(int values);
 };

@@ -7,11 +7,24 @@
 #include "benes.h"
 #include <iterator>
 #include <numeric>
+#include <stdexcept>
 
 using namespace std;
 using namespace osuCrypto;
 
-std::vector<std::array<osuCrypto::block, 2>> OSNSender::gen_benes_server_osn(int values, std::vector<oc::Channel>& chls)
+namespace {
+block add_share(block a, block b, uint64_t modulus)
+{
+	if (modulus == 0) return a ^ b;
+	uint64_t av = 0, bv = 0;
+	memcpy(&av, &a, sizeof(av));
+	memcpy(&bv, &b, sizeof(bv));
+	return toBlock(0ULL, static_cast<u64>((av + bv) % modulus));
+}
+}
+
+std::vector<std::array<osuCrypto::block, 2>> OSNSender::gen_benes_server_osn(int values, std::vector<oc::Channel>& chls,
+	uint64_t modulus)
 {
 	osuCrypto::BitVector switches = benes.return_gen_benes_switches(values);
 
@@ -47,8 +60,8 @@ std::vector<std::array<osuCrypto::block, 2>> OSNSender::gen_benes_server_osn(int
 	{
 		if (switches[i] == 1)
 		{
-			temp_msg[0] = recvCorr[i][0] ^ recvMsg[i][0];
-			temp_msg[1] = recvCorr[i][1] ^ recvMsg[i][1];
+			temp_msg[0] = add_share(recvCorr[i][0], recvMsg[i][0], modulus);
+			temp_msg[1] = add_share(recvCorr[i][1], recvMsg[i][1], modulus);
 			recvMsg[i] = { temp_msg[0], temp_msg[1] };
 		}
 	}
@@ -79,6 +92,25 @@ std::vector<oc::block> OSNSender::run_osn(std::vector<oc::Channel>& chls)
 	return input_vec; //share
 }
 
+std::vector<oc::block> OSNSender::run_osn_arithmetic(std::vector<oc::Channel>& chls, uint64_t modulus)
+{
+	if (modulus < 2) throw std::invalid_argument("arithmetic OSN modulus must be at least 2");
+	int values = size;
+	int N = int(ceil(log2(values)));
+	int levels = 2 * N - 1;
+	auto ot_output = gen_benes_server_osn(values, chls, modulus);
+	std::vector<block> input_vec(values);
+	chls[0].recv(input_vec.data(), input_vec.size());
+	std::vector<std::vector<std::array<block, 2>>> matrix_ot_output(
+		levels, std::vector<std::array<block, 2>>(values));
+	int ctr = 0;
+	for (int i = 0; i < levels; ++i)
+		for (int j = 0; j < values / 2; ++j)
+			matrix_ot_output[i][j] = ot_output[ctr++];
+	benes.gen_benes_masked_evaluate(N, 0, 0, input_vec, matrix_ot_output, modulus);
+	return input_vec;
+}
+
 void OSNSender::setTimer(Timer& timer)
 {
 	this->timer = &timer;
@@ -99,7 +131,7 @@ void OSNSender::silent_ot_recv(osuCrypto::BitVector& choices,
 		end_idx = ((end_idx <= total_len) ? end_idx : total_len);
 		size_t size = end_idx - start_idx;
 
-		osuCrypto::PRNG prng0(_mm_set_epi32(4253465, 3434565, 234435, 23987045));
+		osuCrypto::PRNG prng0(osuCrypto::sysRandomSeed());
 		osuCrypto::u64 numOTs = size;
 
 		osuCrypto::SilentOtExtReceiver recv;
@@ -147,7 +179,7 @@ void OSNSender::rand_ot_recv(osuCrypto::BitVector& choices,
 		end_idx = ((end_idx <= total_len) ? end_idx : total_len);
 		size_t size = end_idx - start_idx;
 
-		osuCrypto::PRNG prng0(_mm_set_epi32(4253465, 3434565, 234435, 23987045));
+		osuCrypto::PRNG prng0(osuCrypto::sysRandomSeed());
 		osuCrypto::u64 numOTs = size; // input.length();
 		std::vector<osuCrypto::block> baseRecv(128);
 		std::vector<std::array<osuCrypto::block, 2>> baseSend(128);
@@ -222,7 +254,7 @@ void OSNSender::init(size_t size, int ot_type, const string& osn_cache, const st
 	}
 	else
 	{
-		osuCrypto::PRNG prng(_mm_set_epi32(4253233465, 334565, 0, 235));
+		osuCrypto::PRNG prng(osuCrypto::sysRandomSeed());
 		for (int i = int(size) - 1; i > 0; i--)
 		{
 			int loc = int(prng.get<uint64_t>() % (i + 1));

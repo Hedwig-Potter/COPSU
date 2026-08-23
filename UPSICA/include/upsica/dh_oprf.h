@@ -24,10 +24,14 @@ public:
     explicit ShuffledDhOprf(OprfConfig config);
 
     OprfKeypair GenerateKeypair();
+    std::vector<uint8_t> GenerateBlindFactor() const;
+    OprfMessage BlindWithFactor(const std::vector<uint8_t>& element,
+                                const std::vector<uint8_t>& blind_factor) const;
     OprfMessage Blind(const std::vector<uint8_t>& element, std::vector<uint8_t>& blind_factor) const;
     OprfMessage Evaluate(const OprfMessage& blinded) const;
-    std::vector<OprfMessage> EvaluateBatchShuffled(const std::vector<OprfMessage>& blinded_batch,
-                                                   std::vector<size_t>& permutation) const;
+    // Sender-side local preprocessing: H2(H1(element)^k).
+    std::vector<uint8_t> EvaluateInput(const std::vector<uint8_t>& element) const;
+    std::vector<OprfMessage> EvaluateBatchShuffled(const std::vector<OprfMessage>& blinded_batch) const;
     std::vector<uint8_t> Unblind(const OprfMessage& evaluated, const std::vector<uint8_t>& blind_factor) const;
 
     void ImportSecretKeyHex(const std::string& secret_key_hex);

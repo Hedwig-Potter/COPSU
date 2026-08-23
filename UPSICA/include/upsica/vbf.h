@@ -9,7 +9,7 @@ class VirtualBloomFilter {
 public:
     VirtualBloomFilter(uint32_t slots, uint32_t kv);
 
-    std::vector<uint32_t> Encode(const std::vector<uint8_t>& element) const;
+    std::vector<uint64_t> Encode64(const std::vector<uint8_t>& element) const;
 
 private:
     uint32_t slots_;

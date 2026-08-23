@@ -18,7 +18,6 @@
 
 namespace oc = osuCrypto;
 
-// DemoConfig 用于集中管理命令行可调参数
 struct DemoConfig {
     std::string endpoint = "127.0.0.1:12121";
     std::size_t log_set_size = 4;    // 2^4 = 16 elements
@@ -26,7 +25,6 @@ struct DemoConfig {
     int ot_type = 1;                 // 1 = IKNP OT, 2 = silent OT (requires cache)
 };
 
-// 构造演示用的输入集合，每个元素为唯一的 block
 std::vector<oc::block> build_input(std::size_t size)
 {
     std::vector<oc::block> inputs(size);
@@ -37,7 +35,6 @@ std::vector<oc::block> build_input(std::size_t size)
     return inputs;
 }
 
-// run_sender 启动 OSN 发送端：生成通道、执行 permute+share 并记录置换
 void run_sender(const DemoConfig& cfg, std::size_t set_size,
                 std::vector<oc::block>& sender_shares, std::vector<int>& permutation)
 {
@@ -54,7 +51,7 @@ void run_sender(const DemoConfig& cfg, std::size_t set_size,
     oc::Timer timer;
     sender.setTimer(timer);
     timer.setTimePoint("before run_osn");
-    sender_shares = sender.run_osn(channels); // 得到发送端持有的随机份额 s_s
+    sender_shares = sender.run_osn(channels);
     timer.setTimePoint("after run_osn");
     permutation = sender.dest;
 
@@ -76,7 +73,6 @@ void run_sender(const DemoConfig& cfg, std::size_t set_size,
     session.stop();
 }
 
-// run_receiver 启动 OSN 接收端：带入输入集合，输出接收端的份额
 void run_receiver(const DemoConfig& cfg, const std::vector<oc::block>& inputs,
                   std::vector<oc::block>& receiver_shares)
 {
@@ -93,7 +89,7 @@ void run_receiver(const DemoConfig& cfg, const std::vector<oc::block>& inputs,
     oc::Timer timer;
     receiver.setTimer(timer);
     timer.setTimePoint("before run_osn");
-    receiver_shares = receiver.run_osn(inputs, channels); // 得到接收端份额 s_c
+    receiver_shares = receiver.run_osn(inputs, channels);
     timer.setTimePoint("after run_osn");
 
     std::cout << "[Receiver]" << std::endl;
@@ -114,7 +110,6 @@ void run_receiver(const DemoConfig& cfg, const std::vector<oc::block>& inputs,
     session.stop();
 }
 
-// 主函数组合同步启动 sender/receiver 并验证恢复效果
 int main(int argc, char** argv)
 {
     DemoConfig cfg;
@@ -132,7 +127,7 @@ int main(int argc, char** argv)
     }
 
     const std::size_t set_size = 1ULL << cfg.log_set_size;
-    auto inputs = build_input(set_size); // 发送给接收端用的原始输入序列
+    auto inputs = build_input(set_size);
 
     std::vector<oc::block> sender_shares;
     std::vector<oc::block> receiver_shares;
@@ -149,8 +144,8 @@ int main(int argc, char** argv)
     std::size_t correct = 0;
     for (std::size_t i = 0; i < set_size; ++i)
     {
-        auto recovered = sender_shares[i] ^ receiver_shares[i]; // 份额异或重建
-        if (recovered == inputs[permutation[i]]) // 应当等于被置换后的输入
+        auto recovered = sender_shares[i] ^ receiver_shares[i];
+        if (recovered == inputs[permutation[i]])
         {
             ++correct;
         }

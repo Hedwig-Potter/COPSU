@@ -6,7 +6,6 @@ using namespace std;
 using namespace seal;
 
 int main() {
-    // 1. 配置 BFV 上下文，使用 4096 阶多项式和 20 位明文模数
     EncryptionParameters parms(scheme_type::bfv);
     size_t poly_modulus_degree = 4096;
     parms.set_poly_modulus_degree(poly_modulus_degree);
@@ -15,7 +14,6 @@ int main() {
 
     SEALContext context(parms);
 
-    // 2. 生成密钥对
     KeyGenerator keygen(context);
     auto secret_key = keygen.secret_key();
     PublicKey public_key;
@@ -23,7 +21,6 @@ int main() {
     RelinKeys relin_keys;
     keygen.create_relin_keys(relin_keys);
 
-    // 3. 创建编码器、加解密器、运算器
     BatchEncoder batch_encoder(context);
     Encryptor encryptor(context, public_key);
     Decryptor decryptor(context, secret_key);

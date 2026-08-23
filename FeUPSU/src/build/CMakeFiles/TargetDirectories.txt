@@ -1,6 +1,8 @@
 /home/jrj/code/FeUPSU/src/build/CMakeFiles/osn.dir
 /home/jrj/code/FeUPSU/src/build/CMakeFiles/main.dir
 /home/jrj/code/FeUPSU/src/build/CMakeFiles/main2.dir
+/home/jrj/code/FeUPSU/src/build/CMakeFiles/feupsu_client.dir
+/home/jrj/code/FeUPSU/src/build/CMakeFiles/feupsu_server.dir
 /home/jrj/code/FeUPSU/src/build/CMakeFiles/test.dir
 /home/jrj/code/FeUPSU/src/build/CMakeFiles/edit_cache.dir
 /home/jrj/code/FeUPSU/src/build/CMakeFiles/rebuild_cache.dir

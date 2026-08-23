@@ -23,11 +23,20 @@ struct Plaintext {
     std::vector<uint64_t> slots;
 };
 
+struct FheEvaluationKeys {
+    std::vector<uint8_t> public_key;
+    std::vector<uint8_t> relin_keys;
+};
+
 class FheWrapper {
 public:
     explicit FheWrapper(FheParams params);
 
+    // Receiver role: owns the secret key and may encrypt/decrypt.
     void Initialize();
+    // Sender role: owns only public/relinearization keys and may evaluate.
+    void InitializeEvaluator(const FheEvaluationKeys& keys);
+    FheEvaluationKeys ExportEvaluationKeys() const;
     Plaintext Encode(const std::vector<uint64_t>& slots) const;
     Ciphertext Encrypt(const Plaintext& pt) const;
     Plaintext Decrypt(const Ciphertext& ct) const;
@@ -43,6 +52,7 @@ public:
 private:
     size_t slot_count_ = 0;
     bool initialized_ = false;
+    bool can_decrypt_ = false;
     FheParams params_;
 
 #if UPSICA_ENABLE_SEAL
